@@ -10,7 +10,7 @@ dataset covers (through 2015), since a new title is judged on all history.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import joblib
@@ -21,12 +21,13 @@ from sklearn.calibration import CalibratedClassifierCV
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from config import DATA_DIR, MODEL_MAX_YEAR, REPORTS_DIR, TRAIN_END_YEAR  # noqa: E402
-from data_prep import _franchise_key, _looks_like_sequel, load_clean  # noqa: E402
-from features import FEATURES, NUMERIC, build_features, split_temporal  # noqa: E402
-from train import logistic_pipeline  # noqa: E402
+from config import MODEL_MAX_YEAR, REPORTS_DIR, TRAIN_END_YEAR  # noqa: E402
+from data_prep import _franchise_key, _looks_like_sequel  # noqa: E402
+from features import FEATURES, NUMERIC  # noqa: E402
 
-MODEL_PATH = DATA_DIR / "serving_model.joblib"
+# Committed to the repository so a deployment needs neither the dataset nor a
+# training step. Rebuild with ``python -m app.service`` after changing the model.
+MODEL_PATH = Path(__file__).parent / "model" / "serving_model.joblib"
 SMOOTHING = 5.0  # must match features.build_features
 
 
@@ -71,6 +72,11 @@ def _market_summary(d: pd.DataFrame) -> dict:
 
 
 def build_artifacts() -> Artifacts:
+    # Imported here so serving never pulls in the plotting stack or needs data.
+    from data_prep import load_clean
+    from features import build_features, split_temporal
+    from train import logistic_pipeline
+
     d = build_features(load_clean(), train_end=TRAIN_END_YEAR)
     train, _ = split_temporal(d, TRAIN_END_YEAR, MODEL_MAX_YEAR)
 
@@ -100,14 +106,17 @@ def get_artifacts() -> Artifacts:
     global _cache
     if _cache is None:
         if MODEL_PATH.exists():
-            try:
-                _cache = joblib.load(MODEL_PATH)
-            except Exception:
-                _cache = None
-        if _cache is None:
+            _cache = Artifacts(**joblib.load(MODEL_PATH))
+        else:
             _cache = build_artifacts()
-            joblib.dump(_cache, MODEL_PATH)
+            save_artifacts(_cache)
     return _cache
+
+
+def save_artifacts(a: Artifacts) -> None:
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # A plain dict, so loading does not depend on where this module is imported from.
+    joblib.dump(asdict(a), MODEL_PATH, compress=3)
 
 
 def feature_frame(a: Artifacts, items: list[dict]) -> pd.DataFrame:
@@ -163,3 +172,8 @@ def predict(a: Artifacts, items: list[dict]) -> list[dict]:
 def load_metrics() -> dict:
     import json
     return json.loads((REPORTS_DIR / "metrics.json").read_text())
+
+
+if __name__ == "__main__":
+    save_artifacts(build_artifacts())
+    print(f"wrote {MODEL_PATH}")

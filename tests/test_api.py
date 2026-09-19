@@ -10,13 +10,6 @@ GOOD = {"title": "Call of Duty: Ghosts", "platform": "PS3", "genre": "Shooter",
         "critic_score": 75, "critic_count": 60, "n_platforms": 4}
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _needs_data():
-    from config import CLEAN_CSV, RAW_CSV
-    if not (RAW_CSV.exists() or CLEAN_CSV.exists()):
-        pytest.skip("dataset not downloaded; run src/download_data.py")
-
-
 def test_options_lists_choices():
     r = client.get("/api/options").json()
     assert "PS3" in r["platforms"] and "Shooter" in r["genres"]

@@ -114,7 +114,7 @@ single-page frontend on top: score one release, rank a whole slate, and browse
 the market charts.
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ./run_all.sh                       # fetches data and builds reports (once)
 uvicorn app.main:app --reload      # http://127.0.0.1:8000
 ```
@@ -138,7 +138,7 @@ history.
 ## Running it
 
 ```bash
-pip install -r requirements.txt   # or requirements-lock.txt for the exact tested versions
+pip install -r requirements-dev.txt   # or requirements-lock.txt for the exact tested versions
 ./run_all.sh
 pip install pytest && pytest      # leakage and metric tests
 ```

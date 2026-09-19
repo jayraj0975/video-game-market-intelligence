@@ -17,7 +17,10 @@ RAW_CSV = DATA_DIR / "video_game_sales.csv"
 CLEAN_CSV = DATA_DIR / "video_game_sales_clean.csv"
 
 for _d in (DATA_DIR, REPORTS_DIR, FIGURES_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
+    try:
+        _d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass  # read-only deployment (e.g. serverless); the app only reads
 
 # ------------------------------------------------------------ constants
 # A "hit" is a million-seller. This is the industry's own shorthand for a
