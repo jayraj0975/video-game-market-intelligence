@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+.DS_Store
+.vscode/
+.idea/
+
+# Fetched by src/download_data.py
+data/
+
+# Derived: the SVGs are committed, the PNG copies are build output
+reports/figures/*.png

@@ -1,0 +1,108 @@
+{
+  "models": [
+    {
+      "model": "Base rate",
+      "roc_auc": 0.5,
+      "pr_auc": 0.11878685762426285,
+      "brier": 0.10467784417092557,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 10,
+      "top10_hits_total": 141,
+      "top10_recall": 0.07092198581560284,
+      "top10_precision": 0.08403361344537816,
+      "top10_lift": 0.7074319089337864
+    },
+    {
+      "model": "Logistic regression",
+      "roc_auc": 0.9013397881832852,
+      "pr_auc": 0.6736680865252838,
+      "brier": 0.1049591697953547,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 79,
+      "top10_hits_total": 141,
+      "top10_recall": 0.5602836879432624,
+      "top10_precision": 0.6638655462184874,
+      "top10_lift": 5.5887120805769115
+    },
+    {
+      "model": "Gradient boosting",
+      "roc_auc": 0.9047774026009249,
+      "pr_auc": 0.6291434266610789,
+      "brier": 0.06794405355005884,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 73,
+      "top10_hits_total": 141,
+      "top10_recall": 0.5177304964539007,
+      "top10_precision": 0.6134453781512605,
+      "top10_lift": 5.16425293521664
+    }
+  ],
+  "ablation": [
+    {
+      "model": "Logistic regression (all launch-time features)",
+      "roc_auc": 0.9013397881832852,
+      "pr_auc": 0.6736680865252838,
+      "brier": 0.1049591697953547,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 79,
+      "top10_hits_total": 141,
+      "top10_recall": 0.5602836879432624,
+      "top10_precision": 0.6638655462184874,
+      "top10_lift": 5.5887120805769115
+    },
+    {
+      "model": "Logistic regression (no critic features)",
+      "roc_auc": 0.899285355898187,
+      "pr_auc": 0.578442706887078,
+      "brier": 0.1425962061552924,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 67,
+      "top10_hits_total": 141,
+      "top10_recall": 0.475177304964539,
+      "top10_precision": 0.5630252100840336,
+      "top10_lift": 4.7397937898563685
+    }
+  ],
+  "leakage_check": [
+    {
+      "model": "Logistic regression (launch-time features only)",
+      "roc_auc": 0.9013397881832852,
+      "pr_auc": 0.6736680865252838,
+      "brier": 0.1049591697953547,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 79,
+      "top10_hits_total": 141,
+      "top10_recall": 0.5602836879432624,
+      "top10_precision": 0.6638655462184874,
+      "top10_lift": 5.5887120805769115
+    },
+    {
+      "model": "Logistic regression (+ post-release User_Count)",
+      "roc_auc": 0.9172531630120825,
+      "pr_auc": 0.7389047083701006,
+      "brier": 0.08610257304094063,
+      "top10_n_selected": 119,
+      "top10_hits_caught": 89,
+      "top10_hits_total": 141,
+      "top10_recall": 0.6312056737588653,
+      "top10_precision": 0.7478991596638656,
+      "top10_lift": 6.296143989510698
+    }
+  ],
+  "calibration": {
+    "brier_before": 0.1049591697953547,
+    "brier_after": 0.06401096351488492
+  },
+  "budget": {
+    "n_selected": 119,
+    "hits_caught": 79,
+    "hits_total": 141,
+    "recall": 0.5602836879432624,
+    "precision": 0.6638655462184874,
+    "lift": 5.5887120805769115
+  },
+  "best_model": "Logistic regression",
+  "base_rate": 0.11878685762426285,
+  "n_train": 14050,
+  "n_test": 1187
+}
