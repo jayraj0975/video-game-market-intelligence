@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hit Predictor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #fff; --ink: #14181f; --muted: #5b6472; --line: #e2e5ea;
+    --accent: #2a5bd7; --accent-ink: #fff; --good: #1a7f4b; --warn: #b26a00; --bar: #c9d3ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218; --surface: #171b23; --ink: #e8ebf0; --muted: #98a1b0; --line: #262c37;
+      --accent: #6b93ff; --accent-ink: #0f1218; --good: #45c27f; --warn: #e0a24a; --bar: #2b3550;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 860px) { .grid.two { grid-template-columns: 1.1fr 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  form { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  label.full { grid-column: 1 / -1; }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 8px 10px; width: 100%; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; gap: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
+  button { font: inherit; border-radius: 8px; padding: 9px 14px; border: 1px solid var(--line);
+           background: var(--surface); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .hint { font-size: 12px; color: var(--muted); grid-column: 1 / -1; margin: 0; }
+  .meter { height: 14px; background: var(--bar); border-radius: 7px; overflow: hidden; margin: 10px 0 4px; }
+  .meter > div { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .big { font-size: 44px; font-weight: 700; line-height: 1; }
+  .muted { color: var(--muted); }
+  .err { color: #c0392b; margin: 8px 0 0; min-height: 1.4em; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .bars { display: grid; gap: 6px; }
+  .bar { display: grid; grid-template-columns: 96px 1fr 52px; align-items: center; gap: 8px; font-size: 13px; }
+  .bar > span:first-child { color: var(--muted); }
+  .bar .track { background: var(--bar); border-radius: 4px; height: 12px; }
+  .bar .fill { background: var(--accent); height: 100%; border-radius: 4px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .caveat { font-size: 13px; color: var(--muted); border-left: 3px solid var(--warn); padding-left: 10px; margin-top: 14px; }
+  .stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .stat:last-child { border-bottom: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hit Predictor</h1>
+  <p class="sub">Will a release sell 1M+ units? Trained on 15,739 retail releases (1996&ndash;2015). Ranking is the strength; treat single probabilities as estimates.</p>
+
+  <div class="grid two">
+    <section class="card">
+      <h2>Score a release</h2>
+      <form id="form" autocomplete="off">
+        <label class="full">Title <input id="title" placeholder="e.g. Call of Duty: Ghosts"></label>
+        <label>Platform <select id="platform"></select></label>
+        <label>Genre <select id="genre"></select></label>
+        <label>ESRB rating <select id="rating"></select></label>
+        <label>Release year <input id="year" type="number" min="1996" max="2030" value="2015"></label>
+        <label class="full">Publisher <input id="publisher" list="publishers" placeholder="Start typing&hellip;"></label>
+        <datalist id="publishers"></datalist>
+        <label>Critic score (0&ndash;100) <input id="critic_score" type="number" min="0" max="100" placeholder="optional"></label>
+        <label>Critic reviews <input id="critic_count" type="number" min="0" max="200" placeholder="optional"></label>
+        <label>Platforms at launch <input id="n_platforms" type="number" min="1" max="12" value="1"></label>
+        <p class="hint">Critic score and review count go together. Leave both blank for a greenlight-stage estimate; the model is weaker without them.</p>
+        <div class="row">
+          <button class="primary" type="submit">Predict</button>
+          <button type="button" id="add">Add to slate</button>
+        </div>
+      </form>
+      <p class="err" id="err" role="alert"></p>
+    </section>
+
+    <section class="card" aria-live="polite">
+      <h2>Result</h2>
+      <div id="result"><p class="muted">Fill in the form and press Predict.</p></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Slate ranking</h2>
+    <p class="muted" style="margin-top:0">Add several releases, then rank them the way a publisher would decide where to spend.</p>
+    <div id="slate"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="rank" type="button">Rank slate</button>
+      <button id="clear" type="button">Clear</button>
+    </div>
+  </section>
+
+  <div class="grid two" style="margin-top:16px">
+    <section class="card">
+      <h2>Regional taste</h2>
+      <div class="tabs" id="regions" role="group" aria-label="Region"></div>
+      <div class="bars" id="genre-bars"></div>
+    </section>
+    <section class="card">
+      <h2>Hit rate by critic score</h2>
+      <div class="bars" id="score-bars"></div>
+      <h2 style="margin-top:22px">Model on the held-out 2014&ndash;15 slate</h2>
+      <div id="metrics"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
+let slate = [];
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(Array.isArray(d) ? d.map((e) => e.loc.slice(-1)[0] + ": " + e.msg).join("; ") : d || res.statusText);
+  }
+  return data;
+}
+
+function fill(sel, values, def) {
+  $(sel).innerHTML = values.map((v) => `<option${v === def ? " selected" : ""}>${v}</option>`).join("");
+}
+
+function readForm() {
+  const num = (id) => ($(id).value === "" ? null : Number($(id).value));
+  return {
+    title: $("title").value.trim(), platform: $("platform").value, genre: $("genre").value,
+    rating: $("rating").value, publisher: $("publisher").value.trim(), year: Number($("year").value),
+    critic_score: num("critic_score"), critic_count: num("critic_count"), n_platforms: Number($("n_platforms").value),
+  };
+}
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function showResult(r) {
+  const verdict = r.probability >= 0.5 ? "Likely hit" : r.probability >= r.base_rate * 1.5 ? "Above average odds" : "Below average odds";
+  $("result").innerHTML = `
+    <div class="big">${pct(r.probability)}</div>
+    <div class="muted">chance of selling 1M+ &middot; ${verdict}</div>
+    <div class="meter"><div style="width:${Math.min(100, r.probability * 100)}%"></div></div>
+    <div class="muted" style="font-size:13px">Average release: ${pct(r.base_rate)} &middot; this one is ${r.vs_base_rate.toFixed(1)}&times; that</div>
+    <div style="margin-top:14px">
+      <div class="stat"><span>Publisher track record</span><span>${r.publisher_history.hits} hits / ${r.publisher_history.titles} titles</span></div>
+      <div class="stat"><span>Franchise track record</span><span>${r.franchise_history.hits} hits / ${r.franchise_history.titles} titles</span></div>
+      <div class="stat"><span>Critic data used</span><span>${r.used_critic_data ? "yes" : "no"}</span></div>
+    </div>
+    <p class="caveat">Physical retail sales only, and franchises are matched by the text before the colon in the title. A game already in the dataset counts itself in its own franchise history, so score new releases, not old ones. A single probability carries real uncertainty; the model is best at ordering titles against each other.</p>`;
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("err").textContent = "";
+  try { showResult(await api("/api/predict", readForm())); }
+  catch (err) { $("err").textContent = err.message; }
+});
+
+function renderSlate() {
+  $("slate").innerHTML = slate.length
+    ? `<table><thead><tr><th>#</th><th>Title</th><th>Platform</th><th>Genre</th><th class="num">Hit chance</th></tr></thead><tbody>${
+        slate.map((r, i) => `<tr><td>${r.rank ?? i + 1}</td><td>${esc(r.title || "(untitled)")}</td><td>${esc(r.platform)}</td><td>${esc(r.genre)}</td><td class="num">${r.probability != null ? pct(r.probability) : "&ndash;"}</td></tr>`).join("")
+      }</tbody></table>`
+    : `<p class="muted">Nothing added yet.</p>`;
+}
+
+$("add").addEventListener("click", () => {
+  $("err").textContent = "";
+  if (slate.length >= 50) { $("err").textContent = "The slate holds at most 50 releases."; return; }
+  slate.push(readForm()); renderSlate();
+});
+$("clear").addEventListener("click", () => { slate = []; renderSlate(); });
+$("rank").addEventListener("click", async () => {
+  if (!slate.length) return;
+  try {
+    const out = await api("/api/rank", { releases: slate.map(({ rank, probability, ...rest }) => rest) });
+    // Keep the original inputs so the slate can be edited and re-ranked.
+    const inputs = slate.map(({ rank, probability, ...rest }) => rest);
+    const used = new Set();
+    slate = out.ranked.map((r) => {
+      const i = inputs.findIndex((x, j) => !used.has(j) && x.title === r.title && x.platform === r.platform && x.genre === r.genre);
+      used.add(i);
+      return { ...inputs[i], probability: r.probability, rank: r.rank };
+    });
+    renderSlate();
+  } catch (err) { $("err").textContent = err.message; }
+});
+
+function bars(el, rows, fmt) {
+  const max = Math.max(...rows.map((r) => r.value));
+  $(el).innerHTML = rows.map((r) => `<div class="bar"><span>${esc(r.label)}</span><div class="track"><div class="fill" style="width:${(r.value / max) * 100}%"></div></div><span class="num">${fmt(r.value)}</span></div>`).join("");
+}
+
+async function init() {
+  const [opt, market, metrics] = await Promise.all([api("/api/options"), api("/api/market"), api("/api/metrics")]);
+  fill("platform", opt.platforms, "PS3"); fill("genre", opt.genres, "Action"); fill("rating", opt.ratings, "T");
+  $("publishers").innerHTML = opt.publishers.map((p) => `<option value="${esc(p)}">`).join("");
+
+  const regions = Object.keys(market.regional_genre_share);
+  const draw = (region) => {
+    [...$("regions").children].forEach((b) => b.setAttribute("aria-pressed", b.textContent === region));
+    const rows = Object.entries(market.regional_genre_share[region]).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+    bars("genre-bars", rows, (v) => pct(v));
+  };
+  $("regions").innerHTML = regions.map((r) => `<button type="button" aria-pressed="false">${r}</button>`).join("");
+  [...$("regions").children].forEach((b) => b.addEventListener("click", () => draw(b.textContent)));
+  draw("Japan");
+
+  bars("score-bars", market.hit_rate_by_score.map((r) => ({ label: r.band, value: r.hit_rate })), (v) => pct(v, 0));
+
+  const best = metrics.models.find((m) => m.model === metrics.best_model);
+  const ci = metrics.bootstrap_95ci;
+  $("metrics").innerHTML = `
+    <div class="stat"><span>Model</span><span>${esc(metrics.best_model)}</span></div>
+    <div class="stat"><span>PR-AUC (no skill ${metrics.base_rate.toFixed(2)})</span><span>${best.pr_auc.toFixed(3)}</span></div>
+    <div class="stat"><span>Top 10% captures</span><span>${pct(best.top10_recall, 0)} of hits (${best.top10_lift.toFixed(1)}&times;)</span></div>
+    <div class="stat"><span>Lift 95% interval</span><span>${ci.best_lift[0].toFixed(1)}&ndash;${ci.best_lift[1].toFixed(1)}&times;</span></div>`;
+  renderSlate();
+}
+init().catch((e) => { $("err").textContent = "Could not load: " + e.message; });
+</script>
+</body>
+</html>

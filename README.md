@@ -107,6 +107,34 @@ Isotonic calibration fixes the probabilities without touching the order: Brier
 
 ---
 
+## Try it: web app
+
+A FastAPI backend serves the same calibrated model the report evaluates, with a
+single-page frontend on top: score one release, rank a whole slate, and browse
+the market charts.
+
+```bash
+pip install -r requirements.txt
+./run_all.sh                       # fetches data and builds reports (once)
+uvicorn app.main:app --reload      # http://127.0.0.1:8000
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/predict` | probability that one release sells 1M+ units |
+| `POST /api/rank` | rank up to 50 releases by that probability |
+| `GET /api/options` | valid platforms, genres, ratings, publishers |
+| `GET /api/metrics` | test-slate metrics and bootstrap intervals |
+| `GET /api/market` | chart data for the dashboard |
+
+Interactive API docs live at `/docs`. Or run it in Docker:
+`docker build -t hit-predictor . && docker run -p 8000:8000 hit-predictor`.
+
+Probabilities are clipped to 0.5%-98%: isotonic calibration saturates at exactly
+0 and 1, which is a step-function artefact rather than certainty. Score *new*
+releases; a game already in the dataset counts itself in its own franchise
+history.
+
 ## Running it
 
 ```bash
@@ -121,6 +149,7 @@ rendered from the same computation that draws the charts, so they cannot drift
 out of sync with the code.
 
 ```
+app/                 FastAPI backend (service.py, main.py) and the static frontend
 src/
   config.py          paths, and the definitions of "hit" and the train/test boundary
   download_data.py   fetch the source dataset into data/
