@@ -162,6 +162,40 @@ def evaluate(name: str, y_true: np.ndarray, scores: np.ndarray) -> dict:
     }
 
 
+def bootstrap_intervals(y_true: np.ndarray, scored: dict[str, np.ndarray],
+                        best: str, rival: str, n_boot: int = 2000) -> dict:
+    """95% percentile intervals from resampling the test slate.
+
+    The slate is 1,187 titles with 141 hits, so every headline number carries
+    real sampling noise. Resampling titles with replacement, and scoring every
+    model on the *same* resample, gives an interval for each metric and -- more
+    usefully -- for the *difference* between the two contenders, which is what
+    "model A beats model B" actually claims.
+    """
+    rng = np.random.default_rng(RANDOM_STATE)
+    n = len(y_true)
+    draws = {"best_pr_auc": [], "best_lift": [], "best_recall": [],
+             "pr_auc_gap": []}
+    while len(draws["best_pr_auc"]) < n_boot:
+        idx = rng.integers(0, n, n)
+        y = y_true[idx]
+        if y.sum() == 0:
+            continue
+        b, r = scored[best][idx], scored[rival][idx]
+        cap = capture_at_budget(y, b)
+        draws["best_pr_auc"].append(average_precision_score(y, b))
+        draws["best_lift"].append(cap["lift"])
+        draws["best_recall"].append(cap["recall"])
+        draws["pr_auc_gap"].append(
+            average_precision_score(y, b) - average_precision_score(y, r))
+    out = {k: [float(np.percentile(v, 2.5)), float(np.percentile(v, 97.5))]
+           for k, v in draws.items()}
+    out["n_boot"] = n_boot
+    out["rival"] = rival
+    out["gap_share_positive"] = float(np.mean(np.array(draws["pr_auc_gap"]) > 0))
+    return out
+
+
 # ---------------------------------------------------------------- figures
 def plot_curves(y_test: np.ndarray, scored: dict[str, np.ndarray],
                 base_rate: float) -> None:
@@ -308,7 +342,7 @@ def plot_calibration_and_capture(y_test: np.ndarray, scores: np.ndarray,
 def write_report(rows: list[dict], leak: list[dict], ablation: list[dict],
                  imp: pd.DataFrame, budget: dict, n_train: int, n_test: int,
                  base_rate: float, best_name: str,
-                 brier_before: float, brier_after: float) -> None:
+                 brier_before: float, brier_after: float, ci: dict) -> None:
     """Render the model report from the metrics just computed."""
     results = pd.DataFrame(rows)
     pct = int(BUDGET_FRACTION * 100)
@@ -369,6 +403,21 @@ no-skill floor of {base_rate:.3f}. ROC-AUC of {best['roc_auc']:.3f} looks more i
 than the model is; on a slate that is {base_rate:.0%} hits, PR-AUC is the honest number.
 
 ![Model curves](figures/07_model_curves.svg)
+
+## How much noise is in these numbers
+
+The test slate holds {budget['hits_total']} hits, so every figure above has a
+sampling error. Resampling the slate {ci['n_boot']:,} times (95% intervals):
+
+| Metric | {best_name} |
+|---|---|
+| PR-AUC | {ci['best_pr_auc'][0]:.3f} to {ci['best_pr_auc'][1]:.3f} |
+| Lift at top {pct}% | {ci['best_lift'][0]:.1f}× to {ci['best_lift'][1]:.1f}× |
+| Hits captured at top {pct}% | {ci['best_recall'][0]:.0%} to {ci['best_recall'][1]:.0%} |
+
+**{best_name} vs {ci['rival']}.** The PR-AUC gap has a 95% interval of
+{ci['pr_auc_gap'][0]:+.3f} to {ci['pr_auc_gap'][1]:+.3f}, and {best_name} came out
+ahead in {ci['gap_share_positive']:.0%} of resamples. {"That interval excludes zero." if ci['pr_auc_gap'][0] > 0 else "That interval includes zero, so the two are statistically indistinguishable on this slate: treat the choice of the simpler model as a preference for simplicity, not as evidence that it is better."}
 
 ## What it buys
 
@@ -466,7 +515,7 @@ reports a score it could never reproduce in use.
 
 
 def main() -> None:
-    d = build_features(load_clean())
+    d = build_features(load_clean(), train_end=TRAIN_END_YEAR)
     train, test = split_temporal(d, TRAIN_END_YEAR, MODEL_MAX_YEAR)
 
     X_train, y_train = train[FEATURES], train["is_hit"].to_numpy()
@@ -552,17 +601,24 @@ def main() -> None:
     brier_after = brier_score_loss(y_test, calibrated_scores)
     print(f"  calibration: Brier {brier_before:.4f} -> {brier_after:.4f}")
 
+    rival = next(n for n in scored if n not in ("Base rate", best_name))
+    ci = bootstrap_intervals(y_test, scored, best_name, rival)
+    print(f"  bootstrap: PR-AUC {ci['best_pr_auc'][0]:.3f}-{ci['best_pr_auc'][1]:.3f}, "
+          f"lift {ci['best_lift'][0]:.1f}-{ci['best_lift'][1]:.1f}x, "
+          f"gap vs {rival} {ci['pr_auc_gap'][0]:+.3f}..{ci['pr_auc_gap'][1]:+.3f}")
+
     print("figures:")
     plot_curves(y_test, scored, base_rate)
     imp = plot_importance(best_model, X_test, y_test)
     budget = plot_calibration_and_capture(y_test, scored[best_name], calibrated_scores)
 
     write_report(rows, leak, ablation, imp, budget, len(train), len(test),
-                 base_rate, best_name, brier_before, brier_after)
+                 base_rate, best_name, brier_before, brier_after, ci)
 
     (REPORTS_DIR / "metrics.json").write_text(json.dumps(
         {"models": rows, "ablation": ablation, "leakage_check": leak,
          "calibration": {"brier_before": brier_before, "brier_after": brier_after},
+         "bootstrap_95ci": ci,
          "budget": budget, "best_model": best_name, "base_rate": base_rate,
          "n_train": len(train), "n_test": len(test)},
         indent=2,

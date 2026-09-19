@@ -16,17 +16,32 @@ slate: **11.9%**.
 | Model               |   ROC-AUC |   PR-AUC |   Brier |   Precision@10% |   Recall@10% |   Lift |
 |:--------------------|----------:|---------:|--------:|----------------:|-------------:|-------:|
 | Base rate           |     0.500 |    0.119 |   0.105 |           0.084 |        0.071 |  0.707 |
-| Logistic regression |     0.901 |    0.674 |   0.105 |           0.664 |        0.560 |  5.589 |
-| Gradient boosting   |     0.905 |    0.629 |   0.068 |           0.613 |        0.518 |  5.164 |
+| Logistic regression |     0.902 |    0.674 |   0.104 |           0.664 |        0.560 |  5.589 |
+| Gradient boosting   |     0.905 |    0.629 |   0.069 |           0.605 |        0.511 |  5.094 |
 
 *Lift is precision in the top 10% divided by the base rate: how many times better
 than picking at random.*
 
 The best model by PR-AUC is **Logistic regression** at **0.674**, against a
-no-skill floor of 0.119. ROC-AUC of 0.901 looks more impressive
+no-skill floor of 0.119. ROC-AUC of 0.902 looks more impressive
 than the model is; on a slate that is 12% hits, PR-AUC is the honest number.
 
 ![Model curves](figures/07_model_curves.svg)
+
+## How much noise is in these numbers
+
+The test slate holds 141 hits, so every figure above has a
+sampling error. Resampling the slate 2,000 times (95% intervals):
+
+| Metric | Logistic regression |
+|---|---|
+| PR-AUC | 0.599 to 0.744 |
+| Lift at top 10% | 5.0× to 6.3× |
+| Hits captured at top 10% | 50% to 63% |
+
+**Logistic regression vs Gradient boosting.** The PR-AUC gap has a 95% interval of
+-0.005 to +0.096, and Logistic regression came out
+ahead in 96% of resamples. That interval includes zero, so the two are statistically indistinguishable on this slate: treat the choice of the simpler model as a preference for simplicity, not as evidence that it is better.
 
 ## What it buys
 
@@ -48,8 +63,8 @@ frequency. That is not a bug, it is the direct consequence of
 scores are good *rankings* and bad *probabilities*.
 
 Isotonic regression fixes it without disturbing the order, so every decision
-metric above is untouched while the Brier score falls from **0.1050**
-to **0.0640**. The distinction matters in use: "rank the slate" and
+metric above is untouched while the Brier score falls from **0.1042**
+to **0.0641**. The distinction matters in use: "rank the slate" and
 "tell me this game's chance of clearing a million units" are different asks, and
 only the second one needs the calibrated model.
 
@@ -83,7 +98,7 @@ genre, rating and release scale only:
 | Model                                          |   PR-AUC |   Recall@10% |
 |:-----------------------------------------------|---------:|-------------:|
 | Logistic regression (all launch-time features) |    0.674 |        0.560 |
-| Logistic regression (no critic features)       |    0.578 |        0.475 |
+| Logistic regression (no critic features)       |    0.578 |        0.468 |
 
 PR-AUC falls from **0.674** to **0.578**, still
 4.9× the no-skill floor of 0.119. The critic
@@ -98,7 +113,7 @@ only exists *after* people have bought and played the game -- moves PR-AUC from
 
 | Model                                           |   ROC-AUC |   PR-AUC |
 |:------------------------------------------------|----------:|---------:|
-| Logistic regression (launch-time features only) |     0.901 |    0.674 |
+| Logistic regression (launch-time features only) |     0.902 |    0.674 |
 | Logistic regression (+ post-release User_Count) |     0.917 |    0.739 |
 
 Nothing about that second row looks wrong in isolation. It is a better model by

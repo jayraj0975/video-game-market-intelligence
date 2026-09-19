@@ -11,7 +11,7 @@ releases between 1996 and 2016:
 
 The short answer to the second question: **yes, partially.** Ranking the
 2014-15 slate and funding the top 10% captures **56% of the actual
-million-sellers** — a **5.6× lift** over picking at random. That is useful and
+million-sellers** — a **5.6× lift** (95% interval 5.0-6.3×) over picking at random. That is useful and
 it is nowhere near clairvoyance, and this repo is careful about the difference.
 
 **Reports:** [Market findings](reports/market_findings.md) ·
@@ -69,12 +69,16 @@ every time" scores 88% accuracy and is worth nothing.
 | Model | ROC-AUC | PR-AUC | Precision@10% | Recall@10% | Lift |
 |---|---|---|---|---|---|
 | Base rate | 0.500 | 0.119 | 0.084 | 0.071 | 0.7× |
-| **Logistic regression** | 0.901 | **0.674** | **0.664** | **0.560** | **5.6×** |
-| Gradient boosting | 0.905 | 0.629 | 0.613 | 0.518 | 5.2× |
+| **Logistic regression** | 0.902 | **0.674** | **0.664** | **0.560** | **5.6×** |
+| Gradient boosting | 0.905 | 0.629 | 0.605 | 0.511 | 5.1× |
 
-Logistic regression beats gradient boosting on the metric that matters here.
-That result is reported as it came out rather than tuned until the fancier
-model won.
+Logistic regression edges gradient boosting on the metric that matters here, but
+the test slate holds only 141 hits, so treat the two as a tie. Resampling the
+slate 2,000 times puts the logistic model's PR-AUC at **0.60-0.74** and its lift
+at **5.0-6.3×**; the PR-AUC gap to gradient boosting has a 95% interval of
+**-0.005 to +0.096**, which includes zero. The simpler model is the pick for
+simplicity, not because it is proven better. Every number is reported as it came
+out rather than tuned until the fancier model won.
 
 ![Model curves](reports/figures/07_model_curves.svg)
 
@@ -97,7 +101,7 @@ is not just a repackaging of Metacritic.
 **It separates good rankings from honest probabilities.** `class_weight=
 "balanced"` produces a well-ordered slate and wildly overconfident numbers.
 Isotonic calibration fixes the probabilities without touching the order: Brier
-**0.105 → 0.064**, every decision metric unchanged.
+**0.104 → 0.064**, every decision metric unchanged.
 
 ![Calibration and capture](reports/figures/09_calibration_and_capture.svg)
 
@@ -106,8 +110,9 @@ Isotonic calibration fixes the probabilities without touching the order: Brier
 ## Running it
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt   # or requirements-lock.txt for the exact tested versions
 ./run_all.sh
+pip install pytest && pytest      # leakage and metric tests
 ```
 
 That fetches the dataset, cleans it, and regenerates every figure and both
@@ -124,6 +129,7 @@ src/
   eda.py             six market analyses -> six figures + market_findings.md
   train.py           models, evaluation, ablation, leakage check -> model_report.md
   viz_style.py       shared chart theme
+tests/               leakage, split and metric tests
 reports/
   market_findings.md
   model_report.md

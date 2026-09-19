@@ -75,8 +75,14 @@ def _expanding_track_record(
                    f"{prefix}_prior_titles", f"{prefix}_prior_hits"]]
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Attach every engineered feature to a copy of the cleaned table."""
+def build_features(df: pd.DataFrame, train_end: int | None = None) -> pd.DataFrame:
+    """Attach every engineered feature to a copy of the cleaned table.
+
+    ``train_end`` is the last training year. The smoothing prior below is a
+    hit rate, and computing it over the whole table would let the held-out
+    years leak into every row's feature; when given, it is measured on
+    releases up to and including that year only.
+    """
     d = df.copy()
 
     # Simultaneous multi-platform releases signal budget and expected reach,
@@ -93,15 +99,20 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     # and one prior hit reads as a guaranteed 100% success rate. Five is a
     # smoothing prior: it pulls thin track records toward the base rate.
     smoothing = 5.0
-    base_rate = d["is_hit"].mean()
+    prior_pool = d if train_end is None else d[d["Year_of_Release"] <= train_end]
+    base_rate = prior_pool["is_hit"].mean()
+
+    # Rows with no publisher (or franchise) never match the track-record
+    # merge. Zeros are the honest answer there too, and they must be filled
+    # before the rate is derived or it comes out NaN.
+    for col in ("publisher_prior_titles", "publisher_prior_hits",
+                "franchise_prior_titles", "franchise_prior_hits"):
+        d[col] = d[col].fillna(0)
+
     d["publisher_prior_hit_rate"] = (
         (d["publisher_prior_hits"] + smoothing * base_rate)
         / (d["publisher_prior_titles"] + smoothing)
     )
-
-    for col in ("publisher_prior_titles", "publisher_prior_hits",
-                "franchise_prior_titles", "franchise_prior_hits"):
-        d[col] = d[col].fillna(0)
 
     return d
 
