@@ -14,6 +14,7 @@ The short answer to the second question: **yes, partially.** Ranking the
 million-sellers** — a **5.6× lift** (95% interval 5.0-6.3×) over picking at random. That is useful and
 it is nowhere near clairvoyance, and this repo is careful about the difference.
 
+**Live demo:** [video-game-hit-predictor-sr-45ad.vercel.app](https://video-game-hit-predictor-sr-45ad.vercel.app) ·
 **Reports:** [Market findings](reports/market_findings.md) ·
 [Model report](reports/model_report.md)
 
@@ -108,6 +109,11 @@ Isotonic calibration fixes the probabilities without touching the order: Brier
 ---
 
 ## Try it: web app
+
+Deployed on Vercel from this repo; every push to `main` redeploys it. The served
+model is committed at `app/model/serving_model.joblib` (rebuild it with
+`python -m app.service`), so the deployment needs neither the dataset nor a
+training step.
 
 A FastAPI backend serves the same calibrated model the report evaluates, with a
 single-page frontend on top: score one release, rank a whole slate, and browse
