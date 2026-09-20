@@ -1,5 +1,7 @@
 # Video Game Market Intelligence
 
+[![ci](https://github.com/jayraj0975/video-game-market-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/jayraj0975/video-game-market-intelligence/actions/workflows/ci.yml)
+
 Two questions about the video game industry, answered from 15,739 platform
 releases between 1996 and 2016:
 
@@ -203,3 +205,11 @@ track-record features carry survivorship bias, since a publisher only has a
 track record if it lasted long enough to build one.
 
 The full list is at the bottom of the [model report](reports/model_report.md).
+
+## Related
+
+The same habits (leak-free evaluation, calibration, stated uncertainty) run through my churn work: [`project`](https://github.com/jayraj0975/project) (analysis), [`churnapp`](https://github.com/jayraj0975/churnapp) (web app) and [`churn-predictor-android`](https://github.com/jayraj0975/churn-predictor-android).
+
+## License
+
+MIT
