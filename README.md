@@ -208,7 +208,7 @@ The full list is at the bottom of the [model report](reports/model_report.md).
 
 ## Related
 
-The same habits (leak-free evaluation, calibration, stated uncertainty) run through my churn work: [`project`](https://github.com/jayraj0975/project) (analysis), [`churnapp`](https://github.com/jayraj0975/churnapp) (web app) and [`churn-predictor-android`](https://github.com/jayraj0975/churn-predictor-android).
+The same habits (leak-free evaluation, calibration, stated uncertainty) run through my churn work: [`customer-churn-analysis`](https://github.com/jayraj0975/customer-churn-analysis) (analysis), [`churnapp`](https://github.com/jayraj0975/churnapp) (web app) and [`churn-predictor-android`](https://github.com/jayraj0975/churn-predictor-android).
 
 ## License
 
