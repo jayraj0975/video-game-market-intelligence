@@ -22,6 +22,8 @@ it is nowhere near clairvoyance, and this repo is careful about the difference.
 
 ---
 
+![Demo: scoring a release, ranking a slate, and the market charts](docs/demo.gif)
+
 ## Headline findings
 
 ### Japan buys a different industry
