@@ -125,5 +125,42 @@
   "best_model": "Logistic regression",
   "base_rate": 0.11878685762426285,
   "n_train": 14050,
-  "n_test": 1187
+  "n_test": 1187,
+  "decision_point": "Pre-release (near-launch) hit prediction",
+  "provenance": {
+    "code_commit": "7d4db901763671d063322212d200d2dc998e2ba1",
+    "code_dirty": false,
+    "data_sha256": {
+      "raw_csv": "9d870e3662c39502513fbf2b2fe05feeb429190f3f884835b30bb607715e48f2",
+      "clean_csv": "81ac8dc1db637bf602fe16502cb389756021a46c5c936af6a84b08a2ee01f128"
+    },
+    "feature_schema_sha256": "a47b2f189cc9629909257d79f14d1093fa7dc10c47b6bc8109be8e84b13bdf71",
+    "features": [
+      "Platform",
+      "Genre",
+      "Rating",
+      "Year_of_Release",
+      "platform_age",
+      "is_sequel",
+      "Critic_Score",
+      "Critic_Count",
+      "has_critic_score",
+      "n_platforms_at_launch",
+      "publisher_prior_titles",
+      "publisher_prior_hits",
+      "publisher_prior_hit_rate",
+      "franchise_prior_titles",
+      "franchise_prior_hits"
+    ],
+    "python": "3.12.3",
+    "scikit_learn": "1.9.1",
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "created_utc": "2026-09-25T08:23:16Z",
+    "model_version": "1.0.0",
+    "decision_point": "Pre-release (near-launch) hit prediction",
+    "training_window": "1996-2013",
+    "evaluation_window": "2014-2015",
+    "data_rows_clean": 15739
+  }
 }
