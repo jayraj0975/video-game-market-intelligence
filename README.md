@@ -8,13 +8,20 @@ releases between 1996 and 2016:
 1. **Where is the money, and who is buying what?** A market analysis of genre
    share, regional taste, console life cycles and publisher concentration.
 2. **Can you call a hit before it ships?** A classifier that ranks a release
-   slate by the probability each title clears one million units, using only
-   what a publisher knows at greenlight.
+   slate by the probability each title clears one million units, using what is
+   known shortly before release: platform, genre, rating, publisher and franchise
+   track record, launch scale and, when available, early critic reviews.
 
 The short answer to the second question: **yes, partially.** Ranking the
 2014-15 slate and funding the top 10% captures **56% of the actual
 million-sellers** — a **5.6× lift** (95% interval 5.0-6.3×) over picking at random. That is useful and
 it is nowhere near clairvoyance, and this repo is careful about the difference.
+
+> **Decision point: pre-release (near-launch), not greenlight.** Critic score and review count only exist within days
+> of launch, so the headline numbers describe a forecast made close to release. A model with the critic features
+> removed is the closer answer to "could this be called at greenlight?": it captures **47%** of the hits at the same 10%
+> budget (**4.7× lift**, PR-AUC 0.578 against 0.674). The web app and API say which case a prediction is, and whether
+> critic data was used.
 
 **Live demo:** [video-game-hit-predictor-sr-45ad.vercel.app](https://video-game-hit-predictor-sr-45ad.vercel.app) ·
 **Reports:** [Market findings](reports/market_findings.md) ·
@@ -65,7 +72,9 @@ than picking the more dramatic reading.
 
 **Task.** Predict whether a release will sell 1M+ units, from platform, genre,
 ESRB rating, publisher and franchise track record, release scale, and early
-critic reception.
+critic reception. Because critic reception only exists close to launch, this is
+a **pre-release (near-launch)** forecast; see the ablation below for the version
+without it.
 
 **Test protocol.** Train on 1996-2013, test on the 2014-15 slate. Evaluated on
 precision-recall, not accuracy — hits are 12% of releases, so "predict no
@@ -135,6 +144,7 @@ uvicorn app.main:app --reload      # http://127.0.0.1:8000
 | `POST /api/rank` | rank up to 50 releases by that probability |
 | `GET /api/options` | valid platforms, genres, ratings, publishers |
 | `GET /api/metrics` | test-slate metrics and bootstrap intervals |
+| `GET /api/model-info` | what is being served: model version, decision point, training and evaluation windows, code commit, data and artifact SHA-256, library versions |
 | `GET /api/market` | chart data for the dashboard |
 
 Interactive API docs live at `/docs`. Or run it in Docker:
@@ -143,15 +153,27 @@ Interactive API docs live at `/docs`. Or run it in Docker:
 Probabilities are clipped to 0.5%-98%: isotonic calibration saturates at exactly
 0 and 1, which is a step-function artefact rather than certainty. Score *new*
 releases; a game already in the dataset counts itself in its own franchise
-history.
+history. Publisher and franchise track records are built from releases through
+2015, so they are only a valid input for a release **after** 2015: a request dated
+2015 or earlier is answered but flagged (`history_note`) as not a valid historical
+backtest, because the model would be seeing its own future.
+
+**Provenance.** `app/model/serving_model.meta.json` sits beside the committed model and records its version, the
+code commit that built it, the SHA-256 of the raw and cleaned data and of the model file, the feature-schema hash, the
+1996-2013 training and 2014-2015 evaluation windows, and library versions. A test checks the file against the artifact,
+so the two cannot drift. Rebuild both with `python -m app.service`.
 
 ## Running it
 
 ```bash
 pip install -r requirements-dev.txt   # or requirements-lock.txt for the exact tested versions
 ./run_all.sh
-pip install pytest && pytest      # leakage and metric tests
+pip install pytest && pytest      # leakage, provenance and API tests; they need no dataset and no network
 ```
+
+Pull-request CI runs those offline tests only. A separate scheduled workflow (`reproduce.yml`) downloads the data, checks the
+cleaned file against its pinned SHA-256, retrains, and fails if the committed metrics no longer reproduce, so an outage at a
+data mirror cannot fail a commit.
 
 That fetches the dataset, cleans it, and regenerates every figure and both
 reports — roughly a minute end to end. The numbers quoted in the reports are

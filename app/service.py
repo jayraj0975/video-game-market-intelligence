@@ -4,11 +4,14 @@ The served model is the same one the model report evaluates: logistic
 regression trained on 1996-2013 releases with isotonic calibration, so the
 probabilities it returns are honest frequencies rather than balanced-class
 scores. Publisher and franchise track records come from every release the
-dataset covers (through 2015), since a new title is judged on all history.
+dataset covers (through 2015), since a new title is judged on all history. That
+history is only a valid input for releases AFTER 2015; scoring an older release
+lets the model see results from its own future, and the API says so.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,13 +24,26 @@ from sklearn.calibration import CalibratedClassifierCV
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from config import MODEL_MAX_YEAR, REPORTS_DIR, TRAIN_END_YEAR  # noqa: E402
+from config import (  # noqa: E402
+    CLEAN_CSV,
+    DECISION_POINT_LABEL,
+    DECISION_POINT_NOTE,
+    MODEL_MAX_YEAR,
+    MODEL_VERSION,
+    RAW_CSV,
+    REPORTS_DIR,
+    TRAIN_END_YEAR,
+)
 from data_prep import _franchise_key, _looks_like_sequel  # noqa: E402
 from features import FEATURES, NUMERIC  # noqa: E402
 
 # Committed to the repository so a deployment needs neither the dataset nor a
 # training step. Rebuild with ``python -m app.service`` after changing the model.
 MODEL_PATH = Path(__file__).parent / "model" / "serving_model.joblib"
+# Provenance for the artifact above: version, commit, data hashes, windows, artifact hash.
+META_PATH = MODEL_PATH.with_name("serving_model.meta.json")
+# Publisher and franchise track records are built from releases through this year.
+HISTORY_THROUGH = MODEL_MAX_YEAR
 SMOOTHING = 5.0  # must match features.build_features
 
 
@@ -119,6 +135,31 @@ def save_artifacts(a: Artifacts) -> None:
     joblib.dump(asdict(a), MODEL_PATH, compress=3)
 
 
+def write_meta(a: Artifacts) -> dict:
+    """Describe the artifact just saved (hashes, versions, windows) in a JSON file beside it."""
+    from provenance import describe, sha256_file
+
+    meta = describe(FEATURES, data_files={"raw_csv": RAW_CSV, "clean_csv": CLEAN_CSV}, extra={
+        "model_version": MODEL_VERSION,
+        "decision_point": DECISION_POINT_LABEL,
+        "decision_point_note": DECISION_POINT_NOTE,
+        "algorithm": "Logistic regression (class-weighted), isotonic calibration (5-fold)",
+        "training_window": f"1996-{TRAIN_END_YEAR}",
+        "evaluation_window": f"{TRAIN_END_YEAR + 1}-{MODEL_MAX_YEAR} (reported in reports/metrics.json)",
+        "history_through": HISTORY_THROUGH,
+        "base_rate": a.base_rate,
+        "artifact_file": MODEL_PATH.name,
+        "artifact_sha256": sha256_file(MODEL_PATH),
+        "artifact_bytes": MODEL_PATH.stat().st_size,
+    })
+    META_PATH.write_text(json.dumps(meta, indent=2) + "\n")
+    return meta
+
+
+def load_meta() -> dict | None:
+    return json.loads(META_PATH.read_text()) if META_PATH.exists() else None
+
+
 def feature_frame(a: Artifacts, items: list[dict]) -> pd.DataFrame:
     rows = []
     for it in items:
@@ -165,6 +206,15 @@ def predict(a: Artifacts, items: list[dict]) -> list[dict]:
             "publisher_history": {"titles": p_titles, "hits": p_hits},
             "franchise_history": {"titles": f_titles, "hits": f_hits},
             "used_critic_data": it.get("critic_score") is not None,
+            "decision_point": DECISION_POINT_LABEL,
+            "history_through": HISTORY_THROUGH,
+            # Track records include releases up to HISTORY_THROUGH, so a release dated on or before
+            # that year is being scored with knowledge of its own future.
+            "history_note": (
+                f"Publisher and franchise track records include releases through {HISTORY_THROUGH}, "
+                f"later than {it['year']}, so this is not a valid historical backtest. Score new releases."
+                if it["year"] <= HISTORY_THROUGH else None
+            ),
         })
     return out
 
@@ -175,5 +225,7 @@ def load_metrics() -> dict:
 
 
 if __name__ == "__main__":
-    save_artifacts(build_artifacts())
-    print(f"wrote {MODEL_PATH}")
+    built = build_artifacts()
+    save_artifacts(built)
+    meta = write_meta(built)
+    print(f"wrote {MODEL_PATH} and {META_PATH.name} (artifact sha256 {meta['artifact_sha256'][:16]}...)")

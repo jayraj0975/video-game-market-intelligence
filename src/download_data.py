@@ -1,9 +1,10 @@
 """Fetch the source dataset.
 
 The dataset is a VGChartz sales scrape joined to Metacritic scores, originally
-published on Kaggle as "Video Game Sales with Ratings". A copy is committed to
-``data/`` so the project runs with no network access; this script exists so the
-provenance is reproducible rather than asserted.
+published on Kaggle as "Video Game Sales with Ratings". The data is not committed
+(``data/`` is git-ignored); this script fetches it from public mirrors, and
+``data_prep.py`` cleans it. The cleaned file is pinned by SHA-256 in
+``config.CLEAN_DATA_SHA256``, and the unit tests need no data at all.
 
 Run: ``python src/download_data.py``
 """

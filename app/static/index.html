@@ -60,7 +60,7 @@
 <body>
 <main>
   <h1>Hit Predictor</h1>
-  <p class="sub">Will a release sell 1M+ units? Trained on 15,739 retail releases (1996&ndash;2015). Ranking is the strength; treat single probabilities as estimates.</p>
+  <p class="sub">Will a release sell 1M+ units? A <strong>pre-release (near-launch)</strong> estimate, trained on 15,739 retail releases (1996&ndash;2015). Ranking is the strength; treat single probabilities as estimates.</p>
 
   <div class="grid two">
     <section class="card">
@@ -76,7 +76,7 @@
         <label>Critic score (0&ndash;100) <input id="critic_score" type="number" min="0" max="100" placeholder="optional"></label>
         <label>Critic reviews <input id="critic_count" type="number" min="0" max="200" placeholder="optional"></label>
         <label>Platforms at launch <input id="n_platforms" type="number" min="1" max="12" value="1"></label>
-        <p class="hint">Critic score and review count go together. Leave both blank for a greenlight-stage estimate; the model is weaker without them.</p>
+        <p class="hint" id="critic-hint">Critic score and review count go together, and only exist close to launch. Leave both blank for an estimate without them; it is less reliable.</p>
         <div class="row">
           <button class="primary" type="submit">Predict</button>
           <button type="button" id="add">Add to slate</button>
@@ -114,6 +114,7 @@
       <div id="metrics"></div>
     </section>
   </div>
+  <p class="muted" id="provenance" style="font-size:12px; margin-top:24px; word-break:break-word"></p>
 </main>
 
 <script>
@@ -156,8 +157,10 @@ function showResult(r) {
     <div style="margin-top:14px">
       <div class="stat"><span>Publisher track record</span><span>${r.publisher_history.hits} hits / ${r.publisher_history.titles} titles</span></div>
       <div class="stat"><span>Franchise track record</span><span>${r.franchise_history.hits} hits / ${r.franchise_history.titles} titles</span></div>
-      <div class="stat"><span>Critic data used</span><span>${r.used_critic_data ? "yes" : "no"}</span></div>
+      <div class="stat"><span>Critic data used</span><span>${r.used_critic_data ? "yes (near-launch estimate)" : "no (less reliable)"}</span></div>
+      <div class="stat"><span>Decision point</span><span>${esc(r.decision_point)}</span></div>
     </div>
+    ${r.history_note ? `<p class="caveat" role="note">${esc(r.history_note)}</p>` : ""}
     <p class="caveat">Physical retail sales only, and franchises are matched by the text before the colon in the title. A game already in the dataset counts itself in its own franchise history, so score new releases, not old ones. A single probability carries real uncertainty; the model is best at ordering titles against each other.</p>`;
 }
 
@@ -203,7 +206,14 @@ function bars(el, rows, fmt) {
 }
 
 async function init() {
-  const [opt, market, metrics] = await Promise.all([api("/api/options"), api("/api/market"), api("/api/metrics")]);
+  const [opt, market, metrics, info] = await Promise.all([api("/api/options"), api("/api/market"), api("/api/metrics"), api("/api/model-info").catch(() => null)]);
+  const abl = metrics.ablation;
+  if (abl && abl.length === 2) {
+    $("critic-hint").textContent = `Critic score and review count go together, and only exist close to launch. Leave both blank for an estimate without them; it is less reliable (on the held-out 2014\u201315 slate, a model trained without critic features scores PR-AUC ${abl[1].pr_auc.toFixed(3)}, against ${abl[0].pr_auc.toFixed(3)} with them).`;
+  }
+  if (info) {
+    $("provenance").textContent = `Model v${info.model_version} \u00b7 ${info.decision_point} \u00b7 trained on ${info.training_window}, evaluated on ${info.evaluation_window.split(" ")[0]} \u00b7 commit ${(info.code_commit || "unknown").slice(0, 7)} \u00b7 data SHA-256 ${info.data_sha256.clean_csv.slice(0, 12)}\u2026 \u00b7 artifact SHA-256 ${info.artifact_sha256.slice(0, 12)}\u2026 \u00b7 scikit-learn ${info.scikit_learn}`;
+  }
   fill("platform", opt.platforms, "PS3"); fill("genre", opt.genres, "Action"); fill("rating", opt.ratings, "T");
   $("publishers").innerHTML = opt.publishers.map((p) => `<option value="${esc(p)}">`).join("");
 

@@ -1,7 +1,14 @@
 name: ci
-on: [push, pull_request]
+# Offline: the tests use the committed model and its provenance file and need no dataset, so an
+# outage at a data mirror cannot fail a commit. Real-data reproduction runs in reproduce.yml.
+on:
+  push:
+  pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,5 +19,4 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-lock.txt pytest
-      - run: python src/download_data.py && python src/data_prep.py
       - run: MPLBACKEND=Agg pytest -q

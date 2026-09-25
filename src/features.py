@@ -1,10 +1,13 @@
 """Feature construction for the hit-prediction model.
 
 The governing rule: **every feature must be knowable before the game ships.**
-A publisher deciding whether to greenlight a title has the platform, the
-genre, the studio's track record, the ESRB rating and (close to launch) the
-early review scores. It does not have the sales figures, the user review
-count, or anything else the audience produces after release.
+Shortly before release a publisher has the platform, the genre, the studio's
+track record, the ESRB rating and (close to launch) the early review scores.
+It does not have the sales figures, the user review count, or anything else
+the audience produces after release. Because critic score and count only exist
+close to launch, the model is a *pre-release* (near-launch) forecast, not a
+greenlight-stage one; ``config.DECISION_POINT`` says so and the ablation in
+``train.py`` measures the model without them.
 
 Two kinds of leakage are guarded against here:
 
@@ -22,7 +25,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-# Known before the game ships.
+# Known before the game ships. (Critic_* are known only close to launch.)
 CATEGORICAL = ["Platform", "Genre", "Rating"]
 
 NUMERIC = [

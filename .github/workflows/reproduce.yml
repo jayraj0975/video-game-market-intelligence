@@ -1,0 +1,39 @@
+name: reproduce
+# Fetches the real data, checks the cleaned file against its pinned SHA-256, retrains, and checks the
+# committed metrics still reproduce. Weekly and on demand; separate from ci.yml so a network problem
+# affects only this check.
+on:
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-lock.txt pytest
+      - run: cp reports/metrics.json /tmp/committed_metrics.json
+      - run: python src/download_data.py && python src/data_prep.py
+      - name: The cleaned data is the one the reports were built from
+        run: cd src && python -c "from provenance import check_pinned_clean_data as c; print(c())"
+      - run: cd src && MPLBACKEND=Agg python train.py
+      - name: The committed metrics reproduce
+        run: |
+          python - <<'PY'
+          import json
+          old = json.load(open("/tmp/committed_metrics.json"))
+          new = json.load(open("reports/metrics.json"))
+          for a, b in zip(new["models"], old["models"]):
+              assert a["model"] == b["model"]
+              assert abs(a["roc_auc"] - b["roc_auc"]) < 1e-3 and abs(a["pr_auc"] - b["pr_auc"]) < 1e-3, (a, b)
+          assert abs(new["budget"]["lift"] - old["budget"]["lift"]) < 0.05
+          assert new["provenance"]["data_sha256"]["clean_csv"] == old["provenance"]["data_sha256"]["clean_csv"]
+          print("reproduced")
+          PY
+      - run: MPLBACKEND=Agg pytest -q

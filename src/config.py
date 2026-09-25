@@ -50,6 +50,24 @@ TRAIN_END_YEAR = 2013
 
 RANDOM_STATE = 42
 
+# SHA-256 of the cleaned dataset (data/video_game_sales_clean.csv) that the committed reports were
+# built from. The raw file is fetched from third-party mirrors in different formats, so the pin is on
+# the deterministic cleaned output. The scheduled reproduction workflow fails if it changes.
+CLEAN_DATA_SHA256 = "81ac8dc1db637bf602fe16502cb389756021a46c5c936af6a84b08a2ee01f128"
+
+# ------------------------------------------------------- what the model is
+# The decision point the model answers. Critic score and count arrive within days of release, so
+# with them this is a PRE-RELEASE (near-launch) forecast, not a greenlight-stage one. Without
+# them it is closer to greenlight but weaker (see the ablation in reports/model_report.md).
+MODEL_VERSION = "1.0.0"
+DECISION_POINT = "pre-release"
+DECISION_POINT_LABEL = "Pre-release (near-launch) hit prediction"
+DECISION_POINT_NOTE = (
+    "Uses what is known shortly before release: platform, genre, rating, publisher and franchise "
+    "track record, launch-window scale, and early critic reviews when you provide them. It is not a "
+    "greenlight-stage model, because critic scores and counts do not exist when the money is committed."
+)
+
 # Columns that encode the target in disguise. Regional sales sum to
 # Global_Sales, so including any of them turns the task into arithmetic.
 LEAKY_COLUMNS = [

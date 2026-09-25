@@ -5,6 +5,7 @@ Run: ``uvicorn app.main:app --reload`` from the repository root.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -14,12 +15,18 @@ from pydantic import BaseModel, Field
 
 from app import service
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from config import DECISION_POINT_LABEL, DECISION_POINT_NOTE, MODEL_VERSION  # noqa: E402
+
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(
     title="Video Game Hit Predictor",
-    description="Probability that a release sells 1M+ units, from launch-time features.",
-    version="1.0.0",
+    description=(
+        "Probability that a release sells 1M+ units, from features known shortly before release. "
+        f"Decision point: {DECISION_POINT_LABEL}. {DECISION_POINT_NOTE}"
+    ),
+    version=MODEL_VERSION,
 )
 
 
@@ -79,6 +86,15 @@ def rank(slate: Slate) -> dict:
     for i, r in enumerate(ranked, 1):
         r["rank"] = i
     return {"ranked": ranked, "base_rate": a.base_rate}
+
+
+@app.get("/api/model-info")
+def model_info() -> dict:
+    """What is being served and where it came from: version, commit, data hashes, windows, artifact hash."""
+    meta = service.load_meta()
+    if meta is None:
+        raise HTTPException(503, "model provenance file is missing; rebuild with `python -m app.service`")
+    return meta
 
 
 @app.get("/api/metrics")
