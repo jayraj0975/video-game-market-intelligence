@@ -3,6 +3,9 @@ updates:
   - package-ecosystem: pip
     directory: "/"
     schedule: { interval: weekly }
+    ignore:
+      # pydantic pins the exact pydantic-core it needs, so the two must move together: bump pydantic, not the core.
+      - dependency-name: pydantic-core
     cooldown:
       default-days: 3
     groups:
