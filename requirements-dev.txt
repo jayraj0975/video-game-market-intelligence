@@ -5,5 +5,5 @@ matplotlib>=3.7
 openpyxl>=3.1
 tabulate>=0.9
 fastapi>=0.110
-uvicorn>=0.29
+uvicorn>=0.54.0
 joblib>=1.3

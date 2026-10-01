@@ -7,7 +7,7 @@ contourpy==1.4.0
 cycler==0.12.1
 et_xmlfile==2.0.0
 fastapi==0.141.1
-fonttools==4.65.0
+fonttools==4.66.0
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -27,9 +27,9 @@ python-dateutil==2.9.0.post0
 scikit-learn==1.9.1
 scipy==1.18.1
 six==1.17.0
-starlette==1.6.0
+starlette==1.7.0
 tabulate==0.10.0
 threadpoolctl==3.7.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
-uvicorn==0.53.0
+uvicorn==0.54.0
