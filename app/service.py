@@ -234,36 +234,88 @@ def predict(a: Artifacts, items: list[dict]) -> list[dict]:
     return out
 
 
+def _comparable_score(row: dict, item: dict) -> float:
+    """Weighted-match score for how similar a past release is to a query.
+
+    Not a learned embedding: platform and genre matter most (a shooter's comps
+    are other shooters), rating and publisher less, critic score only when
+    both sides have one, with a small penalty for being from a different
+    console generation.
+    """
+    s = 0.0
+    if row["platform"] == item["platform"]:
+        s += 3.0
+    if row["genre"] == item["genre"]:
+        s += 3.0
+    if row["rating"] == item["rating"]:
+        s += 1.0
+    if item.get("publisher") and row["publisher"] == item["publisher"]:
+        s += 2.0
+    if item.get("critic_score") is not None and row["critic_score"] is not None:
+        s += max(0.0, 2.0 - abs(row["critic_score"] - item["critic_score"]) / 10)
+    s -= abs(row["year"] - item["year"]) * 0.02
+    return s
+
+
 def find_comparables(a: Artifacts, item: dict, k: int = 8) -> list[dict]:
     """The most similar past releases, and what actually happened to them.
 
-    A simple weighted-match score, not a learned embedding: platform and genre
-    matter most (a shooter's comps are other shooters), rating and publisher
-    less, critic score only when both sides have one, with a small penalty for
-    being from a different console generation. Only releases that actually
-    share something with the query are returned -- an empty or short list is
-    the honest answer when nothing comparable exists, not a reason to pad with
-    unrelated titles.
+    Only releases that actually share something with the query are returned
+    -- an empty or short list is the honest answer when nothing comparable
+    exists, not a reason to pad with unrelated titles.
     """
-    def score(row: dict) -> float:
-        s = 0.0
-        if row["platform"] == item["platform"]:
-            s += 3.0
-        if row["genre"] == item["genre"]:
-            s += 3.0
-        if row["rating"] == item["rating"]:
-            s += 1.0
-        if item.get("publisher") and row["publisher"] == item["publisher"]:
-            s += 2.0
-        if item.get("critic_score") is not None and row["critic_score"] is not None:
-            s += max(0.0, 2.0 - abs(row["critic_score"] - item["critic_score"]) / 10)
-        s -= abs(row["year"] - item["year"]) * 0.02
-        return s
-
-    scored = [(score(row), row) for row in a.catalog]
+    scored = [(_comparable_score(row, item), row) for row in a.catalog]
     scored = [(s, row) for s, row in scored if s > 0]
     scored.sort(key=lambda t: -t[0])
     return [{**row, "similarity": round(s, 2)} for s, row in scored[:k]]
+
+
+def validate_concept(a: Artifacts, item: dict, k: int = 8) -> dict:
+    """Pre-launch concept check: real comparables, a probability, and honest market signals.
+
+    Not a new model -- a synthesis of predict() and find_comparables() plus
+    simple, fully-real aggregates over the catalog (no field here is invented
+    or estimated beyond what the model already does for `prediction`).
+    """
+    comparables = find_comparables(a, item, k)
+    same_combo = [row for row in a.catalog
+                  if row["platform"] == item["platform"] and row["genre"] == item["genre"]]
+    recent_cutoff = HISTORY_THROUGH - 3
+    recent_same_combo = [row for row in same_combo if row["year"] >= recent_cutoff]
+    hit_rate = (sum(row["is_hit"] for row in same_combo) / len(same_combo)) if same_combo else None
+
+    risk_factors = []
+    if not comparables:
+        risk_factors.append(
+            "No past release in this dataset shares platform, genre, rating, or publisher "
+            "with this concept -- the prediction below has no real precedent behind it."
+        )
+    if hit_rate is not None and hit_rate < a.base_rate * 0.7:
+        risk_factors.append(
+            f"{item['genre']} on {item['platform']} hit (sold 1M+) {hit_rate:.0%} of the time in this "
+            f"dataset, well below the {a.base_rate:.0%} rate across all releases."
+        )
+    if same_combo and not recent_same_combo:
+        risk_factors.append(
+            f"No {item['genre']}/{item['platform']} release in {recent_cutoff}-{HISTORY_THROUGH}, the most "
+            "recent years this dataset covers -- the combination may be fading, or this is just a thin slice."
+        )
+
+    return {
+        "prediction": predict(a, [item])[0] | {"base_rate": a.base_rate},
+        "comparables": comparables,
+        "market_saturation": {
+            "same_genre_and_platform_releases": len(same_combo),
+            "same_genre_and_platform_hit_rate": hit_rate,
+            "same_genre_and_platform_recent_releases": len(recent_same_combo),
+            "recent_window": f"{recent_cutoff}-{HISTORY_THROUGH}",
+            "note": (f"Counts are historical releases in this dataset (through {HISTORY_THROUGH}); "
+                     "they describe that record, not today's live market."),
+        },
+        "price_distribution": None,
+        "price_distribution_note": "Not available: this dataset has no price field for historical releases.",
+        "risk_factors": risk_factors,
+    }
 
 
 def load_metrics() -> dict:

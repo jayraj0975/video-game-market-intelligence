@@ -96,6 +96,15 @@ def comparables(release: Release) -> dict:
     return {"comparables": service.find_comparables(a, item)}
 
 
+@app.post("/api/concept-validate")
+def concept_validate(release: Release) -> dict:
+    """Should I make this game? Real comparables, a probability, and honest market signals
+    for a concept that doesn't exist yet -- leave title/publisher/critic fields blank."""
+    a = service.get_artifacts()
+    item = _validated([release])[0]
+    return service.validate_concept(a, item)
+
+
 @app.get("/api/model-info")
 def model_info() -> dict:
     """What is being served and where it came from: version, commit, data hashes, windows, artifact hash."""

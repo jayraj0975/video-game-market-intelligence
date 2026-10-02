@@ -80,7 +80,9 @@
         <div class="row">
           <button class="primary" type="submit">Predict</button>
           <button type="button" id="add">Add to slate</button>
+          <button type="button" id="validate-concept">Validate concept</button>
         </div>
+        <p class="hint">Leave title, publisher and critic fields blank for a concept that doesn't exist yet -- "Validate concept" checks a pre-launch idea's market saturation and risk, not a specific finished release.</p>
       </form>
       <p class="err" id="err" role="alert"></p>
     </section>
@@ -88,6 +90,7 @@
     <section class="card" aria-live="polite">
       <h2>Result</h2>
       <div id="result"><p class="muted">Fill in the form and press Predict.</p></div>
+      <div id="concept-report"></div>
     </section>
   </div>
 
@@ -176,6 +179,29 @@ function showComparables(rows) {
       }</tbody></table><p class="caveat">Nearest past releases by platform, genre, rating, publisher and critic score &mdash; not a model input, just what actually happened to similar titles.</p>`
     : `<p class="muted">No comparable past release shares enough with this one to be useful.</p>`;
 }
+
+function showConceptReport(r) {
+  const sat = r.market_saturation;
+  const risks = r.risk_factors.length
+    ? `<ul>${r.risk_factors.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
+    : `<p class="muted">No specific risk flags from this dataset's history.</p>`;
+  $("concept-report").innerHTML = `
+    <h2 style="margin-top:18px">Concept validation</h2>
+    <div class="stat"><span>${esc(sat.recent_window)} releases, this genre+platform</span><span>${sat.same_genre_and_platform_recent_releases} of ${sat.same_genre_and_platform_releases} total</span></div>
+    <div class="stat"><span>Hit rate, this genre+platform</span><span>${sat.same_genre_and_platform_hit_rate != null ? pct(sat.same_genre_and_platform_hit_rate) : "no history"}</span></div>
+    <div class="stat"><span>Price distribution</span><span class="muted">${esc(r.price_distribution_note)}</span></div>
+    <h3 style="margin:14px 0 6px; font-size:14px">Risk factors</h3>
+    ${risks}
+    <p class="caveat">${esc(sat.note)}</p>`;
+  showResult(r.prediction);
+  showComparables(r.comparables);
+}
+
+$("validate-concept").addEventListener("click", async () => {
+  $("err").textContent = ""; $("concept-report").innerHTML = "";
+  try { showConceptReport(await api("/api/concept-validate", readForm())); }
+  catch (err) { $("err").textContent = err.message; }
+});
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault(); $("err").textContent = "";
