@@ -58,6 +58,7 @@ class Artifacts:
     publishers: dict[str, tuple[int, int]]   # name -> (titles, hits)
     franchises: dict[str, tuple[int, int]]   # key  -> (titles, hits)
     market: dict
+    catalog: list[dict]   # past releases (through HISTORY_THROUGH) for comparables lookup
 
 
 def _history(d: pd.DataFrame, key: str) -> dict[str, tuple[int, int]]:
@@ -111,7 +112,21 @@ def build_artifacts() -> Artifacts:
         publishers=_history(known, "Publisher"),
         franchises=_history(known, "franchise"),
         market=_market_summary(known),
+        catalog=_catalog(known),
     )
+
+
+def _catalog(known: pd.DataFrame) -> list[dict]:
+    """A slim record per past release, for 'what happened to games like this'."""
+    cat = known[["Name", "Platform", "Genre", "Rating", "Publisher",
+                 "Year_of_Release", "Critic_Score", "Global_Sales", "is_hit"]].copy()
+    cat["Critic_Score"] = cat["Critic_Score"].astype(object).where(cat["Critic_Score"].notna(), None)
+    cat = cat.rename(columns={
+        "Name": "title", "Platform": "platform", "Genre": "genre", "Rating": "rating",
+        "Publisher": "publisher", "Year_of_Release": "year", "Critic_Score": "critic_score",
+        "Global_Sales": "global_sales_munits",
+    })
+    return cat.to_dict("records")
 
 
 _cache: Artifacts | None = None
@@ -217,6 +232,38 @@ def predict(a: Artifacts, items: list[dict]) -> list[dict]:
             ),
         })
     return out
+
+
+def find_comparables(a: Artifacts, item: dict, k: int = 8) -> list[dict]:
+    """The most similar past releases, and what actually happened to them.
+
+    A simple weighted-match score, not a learned embedding: platform and genre
+    matter most (a shooter's comps are other shooters), rating and publisher
+    less, critic score only when both sides have one, with a small penalty for
+    being from a different console generation. Only releases that actually
+    share something with the query are returned -- an empty or short list is
+    the honest answer when nothing comparable exists, not a reason to pad with
+    unrelated titles.
+    """
+    def score(row: dict) -> float:
+        s = 0.0
+        if row["platform"] == item["platform"]:
+            s += 3.0
+        if row["genre"] == item["genre"]:
+            s += 3.0
+        if row["rating"] == item["rating"]:
+            s += 1.0
+        if item.get("publisher") and row["publisher"] == item["publisher"]:
+            s += 2.0
+        if item.get("critic_score") is not None and row["critic_score"] is not None:
+            s += max(0.0, 2.0 - abs(row["critic_score"] - item["critic_score"]) / 10)
+        s -= abs(row["year"] - item["year"]) * 0.02
+        return s
+
+    scored = [(score(row), row) for row in a.catalog]
+    scored = [(s, row) for s, row in scored if s > 0]
+    scored.sort(key=lambda t: -t[0])
+    return [{**row, "similarity": round(s, 2)} for s, row in scored[:k]]
 
 
 def load_metrics() -> dict:

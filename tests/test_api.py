@@ -49,6 +49,29 @@ def test_bad_input_is_rejected(patch):
     assert client.post("/api/predict", json={**GOOD, **patch}).status_code == 422
 
 
+def test_comparables_returns_real_similar_releases():
+    r = client.post("/api/comparables", json=GOOD)
+    assert r.status_code == 200
+    rows = r.json()["comparables"]
+    assert rows, "a well-known PS3 shooter from a major publisher should have comparables"
+    assert all(row["platform"] == "PS3" or row["genre"] == "Shooter" for row in rows)
+    assert rows == sorted(rows, key=lambda row: -row["similarity"])
+    assert "is_hit" in rows[0] and "global_sales_munits" in rows[0]
+
+
+def test_comparables_do_not_pad_with_unrelated_titles():
+    from app import service
+    catalog = [{"title": "Totally Unrelated", "platform": "PC", "genre": "Puzzle", "rating": "E",
+                "publisher": "Someone Else", "year": 1998, "critic_score": None,
+                "global_sales_munits": 0.1, "is_hit": 0}]
+    a = service.get_artifacts()
+    stub = service.Artifacts(**{**a.__dict__, "catalog": catalog})
+    out = service.find_comparables(stub, {
+        "platform": "PS3", "genre": "Shooter", "rating": "M", "publisher": "Activision",
+        "year": 2013, "critic_score": 75})
+    assert out == []  # nothing in the catalog shares platform, genre, rating or publisher
+
+
 def test_metrics_and_market_and_index():
     assert "models" in client.get("/api/metrics").json()
     assert client.get("/api/market").json()["hit_rate_by_score"]

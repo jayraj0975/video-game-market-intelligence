@@ -161,13 +161,30 @@ function showResult(r) {
       <div class="stat"><span>Decision point</span><span>${esc(r.decision_point)}</span></div>
     </div>
     ${r.history_note ? `<p class="caveat" role="note">${esc(r.history_note)}</p>` : ""}
-    <p class="caveat">Physical retail sales only, and franchises are matched by the text before the colon in the title. A game already in the dataset counts itself in its own franchise history, so score new releases, not old ones. A single probability carries real uncertainty; the model is best at ordering titles against each other.</p>`;
+    <p class="caveat">Physical retail sales only, and franchises are matched by the text before the colon in the title. A game already in the dataset counts itself in its own franchise history, so score new releases, not old ones. A single probability carries real uncertainty; the model is best at ordering titles against each other.</p>
+    <h2 style="margin-top:18px">Similar past releases</h2>
+    <div id="comparables"><p class="muted">Loading&hellip;</p></div>`;
+}
+
+function showComparables(rows) {
+  $("comparables").innerHTML = rows.length
+    ? `<table><thead><tr><th>Title</th><th>Platform</th><th>Year</th><th class="num">Critic</th><th class="num">Sales (M)</th><th>Outcome</th></tr></thead><tbody>${
+        rows.map((r) => `<tr><td>${esc(r.title)}</td><td>${esc(r.platform)}</td><td>${r.year}</td>` +
+          `<td class="num">${r.critic_score != null ? r.critic_score : "&ndash;"}</td>` +
+          `<td class="num">${r.global_sales_munits.toFixed(2)}</td>` +
+          `<td>${r.is_hit ? "Hit (1M+)" : "Did not hit"}</td></tr>`).join("")
+      }</tbody></table><p class="caveat">Nearest past releases by platform, genre, rating, publisher and critic score &mdash; not a model input, just what actually happened to similar titles.</p>`
+    : `<p class="muted">No comparable past release shares enough with this one to be useful.</p>`;
 }
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault(); $("err").textContent = "";
-  try { showResult(await api("/api/predict", readForm())); }
-  catch (err) { $("err").textContent = err.message; }
+  try {
+    const form = readForm();
+    showResult(await api("/api/predict", form));
+    api("/api/comparables", form).then((c) => showComparables(c.comparables))
+      .catch((err) => { $("comparables").innerHTML = `<p class="err">${esc(err.message)}</p>`; });
+  } catch (err) { $("err").textContent = err.message; }
 });
 
 function renderSlate() {

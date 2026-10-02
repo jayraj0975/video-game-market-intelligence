@@ -129,8 +129,17 @@ model is committed at `app/model/serving_model.joblib` (rebuild it with
 training step.
 
 A FastAPI backend serves the same calibrated model the report evaluates, with a
-single-page frontend on top: score one release, rank a whole slate, and browse
+single-page frontend on top: score one release, see the most similar past
+releases and what actually happened to them, rank a whole slate, and browse
 the market charts.
+
+**Comparables, not just a probability.** A bare "62%" is hard to act on or
+check. Scoring a release also returns the 8 most similar past releases (by
+platform, genre, rating, publisher and critic score — a simple weighted match,
+not a learned embedding) with their real outcomes, so "this looks like a hit"
+comes with "...the way Call of Duty: Black Ops II and Modern Warfare 3 did."
+When nothing in 1996-2015 genuinely resembles the input, the list is short or
+empty rather than padded with unrelated titles to look confident.
 
 ```bash
 pip install -r requirements-dev.txt
@@ -142,6 +151,7 @@ uvicorn app.main:app --reload      # http://127.0.0.1:8000
 |---|---|
 | `POST /api/predict` | probability that one release sells 1M+ units |
 | `POST /api/rank` | rank up to 50 releases by that probability |
+| `POST /api/comparables` | the most similar past releases and what actually happened to them |
 | `GET /api/options` | valid platforms, genres, ratings, publishers |
 | `GET /api/metrics` | test-slate metrics and bootstrap intervals |
 | `GET /api/model-info` | what is being served: model version, decision point, training and evaluation windows, code commit, data and artifact SHA-256, library versions |

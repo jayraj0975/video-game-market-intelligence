@@ -88,6 +88,14 @@ def rank(slate: Slate) -> dict:
     return {"ranked": ranked, "base_rate": a.base_rate}
 
 
+@app.post("/api/comparables")
+def comparables(release: Release) -> dict:
+    """The most similar past releases and what actually happened to them."""
+    a = service.get_artifacts()
+    item = _validated([release])[0]
+    return {"comparables": service.find_comparables(a, item)}
+
+
 @app.get("/api/model-info")
 def model_info() -> dict:
     """What is being served and where it came from: version, commit, data hashes, windows, artifact hash."""
