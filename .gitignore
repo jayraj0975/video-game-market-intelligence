@@ -13,3 +13,4 @@ data/
 
 # Derived: the SVGs are committed, the PNG copies are build output
 reports/figures/*.png
+.env
