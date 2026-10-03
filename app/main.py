@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import service
+from app import ai, service
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from config import DECISION_POINT_LABEL, DECISION_POINT_NOTE, MODEL_VERSION  # noqa: E402
@@ -44,6 +44,10 @@ class Release(BaseModel):
 
 class Slate(BaseModel):
     releases: list[Release] = Field(..., min_length=1, max_length=50)
+
+
+class MarketQuestion(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
 
 
 def _validated(releases: list[Release]) -> list[dict]:
@@ -103,6 +107,15 @@ def concept_validate(release: Release) -> dict:
     a = service.get_artifacts()
     item = _validated([release])[0]
     return service.validate_concept(a, item)
+
+
+@app.post("/api/market-analysis")
+def market_analysis(q: MarketQuestion) -> dict:
+    """Ask the AI market analyst a natural-language question. Investigates via real tool
+    calls over find_comparables/market_saturation; comparable and saturation figures in the
+    response always come from those real calls, never from the model's own restated text.
+    Returns {"available": false, ...} rather than a fake answer if no API key is configured."""
+    return ai.analyze_market(q.question)
 
 
 @app.get("/api/model-info")

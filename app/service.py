@@ -234,6 +234,28 @@ def predict(a: Artifacts, items: list[dict]) -> list[dict]:
     return out
 
 
+def _comparable_score_breakdown(row: dict, item: dict) -> dict:
+    """Per-component contributions to the similarity score, so a caller can show
+    *why* two releases matched instead of just the total (see ``explain_comparable``
+    in ai.py). ``total`` is exactly what ``_comparable_score`` returns.
+    """
+    platform_match = 3.0 if row["platform"] == item["platform"] else 0.0
+    genre_match = 3.0 if row["genre"] == item["genre"] else 0.0
+    rating_match = 1.0 if row["rating"] == item["rating"] else 0.0
+    publisher_match = 2.0 if item.get("publisher") and row["publisher"] == item["publisher"] else 0.0
+    critic_closeness = (
+        max(0.0, 2.0 - abs(row["critic_score"] - item["critic_score"]) / 10)
+        if item.get("critic_score") is not None and row["critic_score"] is not None else 0.0
+    )
+    era_penalty = -abs(row["year"] - item["year"]) * 0.02
+    unrounded = {
+        "platform_match": platform_match, "genre_match": genre_match, "rating_match": rating_match,
+        "publisher_match": publisher_match, "critic_closeness": critic_closeness, "era_penalty": era_penalty,
+    }
+    total = sum(unrounded.values())  # unrounded, matches _comparable_score's return exactly
+    return {**{k: round(v, 3) for k, v in unrounded.items()}, "total": total}
+
+
 def _comparable_score(row: dict, item: dict) -> float:
     """Weighted-match score for how similar a past release is to a query.
 
@@ -242,19 +264,7 @@ def _comparable_score(row: dict, item: dict) -> float:
     both sides have one, with a small penalty for being from a different
     console generation.
     """
-    s = 0.0
-    if row["platform"] == item["platform"]:
-        s += 3.0
-    if row["genre"] == item["genre"]:
-        s += 3.0
-    if row["rating"] == item["rating"]:
-        s += 1.0
-    if item.get("publisher") and row["publisher"] == item["publisher"]:
-        s += 2.0
-    if item.get("critic_score") is not None and row["critic_score"] is not None:
-        s += max(0.0, 2.0 - abs(row["critic_score"] - item["critic_score"]) / 10)
-    s -= abs(row["year"] - item["year"]) * 0.02
-    return s
+    return _comparable_score_breakdown(row, item)["total"]
 
 
 def find_comparables(a: Artifacts, item: dict, k: int = 8) -> list[dict]:
@@ -270,6 +280,26 @@ def find_comparables(a: Artifacts, item: dict, k: int = 8) -> list[dict]:
     return [{**row, "similarity": round(s, 2)} for s, row in scored[:k]]
 
 
+def market_saturation(a: Artifacts, genre: str, platform: str) -> dict:
+    """Real historical saturation for one genre/platform combo -- no concept, no model call.
+
+    Shared by validate_concept() (which adds a probability on top) and the AI
+    market-analyst's get_market_saturation tool, so both read the same numbers.
+    """
+    same_combo = [row for row in a.catalog if row["platform"] == platform and row["genre"] == genre]
+    recent_cutoff = HISTORY_THROUGH - 3
+    recent_same_combo = [row for row in same_combo if row["year"] >= recent_cutoff]
+    hit_rate = (sum(row["is_hit"] for row in same_combo) / len(same_combo)) if same_combo else None
+    return {
+        "same_genre_and_platform_releases": len(same_combo),
+        "same_genre_and_platform_hit_rate": hit_rate,
+        "same_genre_and_platform_recent_releases": len(recent_same_combo),
+        "recent_window": f"{recent_cutoff}-{HISTORY_THROUGH}",
+        "note": (f"Counts are historical releases in this dataset (through {HISTORY_THROUGH}); "
+                 "they describe that record, not today's live market."),
+    }
+
+
 def validate_concept(a: Artifacts, item: dict, k: int = 8) -> dict:
     """Pre-launch concept check: real comparables, a probability, and honest market signals.
 
@@ -278,11 +308,9 @@ def validate_concept(a: Artifacts, item: dict, k: int = 8) -> dict:
     or estimated beyond what the model already does for `prediction`).
     """
     comparables = find_comparables(a, item, k)
-    same_combo = [row for row in a.catalog
-                  if row["platform"] == item["platform"] and row["genre"] == item["genre"]]
-    recent_cutoff = HISTORY_THROUGH - 3
-    recent_same_combo = [row for row in same_combo if row["year"] >= recent_cutoff]
-    hit_rate = (sum(row["is_hit"] for row in same_combo) / len(same_combo)) if same_combo else None
+    saturation = market_saturation(a, item["genre"], item["platform"])
+    same_combo_n = saturation["same_genre_and_platform_releases"]
+    hit_rate = saturation["same_genre_and_platform_hit_rate"]
 
     risk_factors = []
     if not comparables:
@@ -295,23 +323,16 @@ def validate_concept(a: Artifacts, item: dict, k: int = 8) -> dict:
             f"{item['genre']} on {item['platform']} hit (sold 1M+) {hit_rate:.0%} of the time in this "
             f"dataset, well below the {a.base_rate:.0%} rate across all releases."
         )
-    if same_combo and not recent_same_combo:
+    if same_combo_n and not saturation["same_genre_and_platform_recent_releases"]:
         risk_factors.append(
-            f"No {item['genre']}/{item['platform']} release in {recent_cutoff}-{HISTORY_THROUGH}, the most "
+            f"No {item['genre']}/{item['platform']} release in {saturation['recent_window']}, the most "
             "recent years this dataset covers -- the combination may be fading, or this is just a thin slice."
         )
 
     return {
         "prediction": predict(a, [item])[0] | {"base_rate": a.base_rate},
         "comparables": comparables,
-        "market_saturation": {
-            "same_genre_and_platform_releases": len(same_combo),
-            "same_genre_and_platform_hit_rate": hit_rate,
-            "same_genre_and_platform_recent_releases": len(recent_same_combo),
-            "recent_window": f"{recent_cutoff}-{HISTORY_THROUGH}",
-            "note": (f"Counts are historical releases in this dataset (through {HISTORY_THROUGH}); "
-                     "they describe that record, not today's live market."),
-        },
+        "market_saturation": saturation,
         "price_distribution": None,
         "price_distribution_note": "Not available: this dataset has no price field for historical releases.",
         "risk_factors": risk_factors,
