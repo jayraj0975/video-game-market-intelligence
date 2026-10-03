@@ -1,4 +1,4 @@
-"""AI market analyst: Claude investigates real comparables/saturation data via tool calls
+"""AI market analyst: Gemini investigates real comparables/saturation data via tool calls
 and synthesizes a market analysis. The model never originates a comparable, a score, or a
 saturation number -- those fields in the final response are the literal return values of the
 real tool calls made during the conversation, captured server-side. The model only supplies
@@ -20,7 +20,7 @@ from app import service
 log = logging.getLogger("game_intel.ai")
 
 MODEL_ENV = "GAME_INTEL_AI_MODEL"
-DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+DEFAULT_MODEL = "gemini-3.8-flash"
 MAX_TOOL_TURNS = 6
 
 SYSTEM_PROMPT = (
@@ -38,7 +38,7 @@ SYSTEM_PROMPT = (
     "otherwise leave it null. Never call it 'blue ocean' or a market fact -- it is a hypothesis."
 )
 
-TOOLS = [
+_TOOL_SCHEMAS = [
     {
         "name": "find_comparables",
         "description": "Real past releases most similar to a concept, and what actually happened to them.",
@@ -130,6 +130,22 @@ TOOLS = [
 ]
 
 
+def _build_tools():
+    from google.genai import types
+
+    return [
+        types.Tool(
+            function_declarations=[
+                types.FunctionDeclaration(
+                    name=t["name"], description=t["description"],
+                    parameters_json_schema=t["input_schema"],
+                )
+                for t in _TOOL_SCHEMAS
+            ]
+        )
+    ]
+
+
 def _dispatch_tool(a: service.Artifacts, name: str, inp: dict) -> Any:
     if name == "find_comparables":
         item = {
@@ -169,22 +185,40 @@ def _dispatch_tool(a: service.Artifacts, name: str, inp: dict) -> Any:
 
 
 def available() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return bool(os.environ.get("GEMINI_API_KEY"))
 
 
 def analyze_market(question: str, client: Any = None) -> dict:
     """Run the tool-calling loop. `client` is injectable for tests (a fake with the same
-    `.messages.create(...)` surface as `anthropic.Anthropic().messages`); production calls
-    pass None and get a real client built from ANTHROPIC_API_KEY, or an unavailable result.
+    `.generate_content(model=, contents=, config=)` surface as `genai.Client(...).models`);
+    production calls pass None and get a real client built from GEMINI_API_KEY, or an
+    unavailable result.
     """
+    from google.genai import types
+
     if client is None:
         if not available():
-            return {"available": False, "reason": "no ANTHROPIC_API_KEY configured"}
-        import anthropic
-        client = anthropic.Anthropic().messages
+            return {"available": False, "reason": "no GEMINI_API_KEY configured"}
+        from google import genai
+        # Keep the Client itself alive, not just `.models` -- chaining `Client(...).models` in
+        # one expression lets the parent Client get garbage-collected while `.models` still
+        # references its now-closed HTTP client, failing the next request with "client has
+        # been closed" (found live: the very first call failed this way in the real app, but
+        # not in isolated reproductions that happened to keep `client` as a named variable).
+        _genai_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        client = _genai_client.models
 
     a = service.get_artifacts()
-    messages: list[dict] = [{"role": "user", "content": question}]
+    contents: list[Any] = [{"role": "user", "parts": [{"text": question}]}]
+    config = types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT, tools=_build_tools(),
+        # We dispatch tool calls ourselves (real functions, not SDK-visible callables) and
+        # drive the loop manually -- the SDK's automatic function calling only recognizes
+        # Python callables passed as tools, but its internal plumbing still activates around
+        # a bare schema-only tool list and corrupts the client's HTTP connection state across
+        # the second call in a loop. Disabling it is required, not optional, for this pattern.
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
     real_comparables: list[dict] = []
     real_breakdowns: dict[str, dict] = {}  # title -> breakdown, from explain_comparable calls
     real_saturation: dict | None = None
@@ -194,35 +228,39 @@ def analyze_market(question: str, client: Any = None) -> dict:
     total_input_tokens = total_output_tokens = 0
 
     for _turn in range(MAX_TOOL_TURNS):
-        resp = client.create(
-            model=model, max_tokens=2048, system=SYSTEM_PROMPT, tools=TOOLS, messages=messages,
-        )
-        total_input_tokens += getattr(resp.usage, "input_tokens", 0)
-        total_output_tokens += getattr(resp.usage, "output_tokens", 0)
-        messages.append({"role": "assistant", "content": resp.content})
+        resp = client.generate_content(model=model, contents=contents, config=config)
+        usage = getattr(resp, "usage_metadata", None)
+        total_input_tokens += getattr(usage, "prompt_token_count", 0) or 0
+        total_output_tokens += getattr(usage, "candidates_token_count", 0) or 0
 
-        tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
-        submit = next((b for b in tool_uses if b.name == "submit_analysis"), None)
+        # Push the model's own turn back VERBATIM (not hand-reconstructed from the parsed
+        # function calls) -- Gemini embeds a thought_signature on real response parts that a
+        # reconstructed turn lacks, and rejects the next request with a 400 if it's missing.
+        model_turn = getattr(resp, "candidates", None)
+        model_turn = model_turn[0].content if model_turn else {"role": "model", "parts": []}
+        contents.append(model_turn)
 
-        tool_results = []
-        for call in tool_uses:
+        calls = resp.function_calls or []
+        submit = next((c for c in calls if c.name == "submit_analysis"), None)
+
+        response_parts = []
+        for call in calls:
             if call.name == "submit_analysis":
                 continue
-            tool_call_log.append({"name": call.name, "input": call.input})
+            tool_call_log.append({"name": call.name, "input": dict(call.args or {})})
             try:
-                result = _dispatch_tool(a, call.name, call.input)
+                result = _dispatch_tool(a, call.name, call.args or {})
             except Exception as exc:  # noqa: BLE001 - surfaced to the model as a tool error, not a crash
                 result = {"error": str(exc)}
             if call.name == "find_comparables" and "comparables" in result:
                 real_comparables.extend(result["comparables"])
             if call.name == "explain_comparable" and result.get("found"):
-                real_breakdowns[call.input["title"]] = result["breakdown"]
+                real_breakdowns[call.args["title"]] = result["breakdown"]
             if call.name == "get_market_saturation":
                 real_saturation = result
-            tool_results.append({
-                "type": "tool_result", "tool_use_id": call.id,
-                "content": [{"type": "text", "text": _json(result)}],
-            })
+            response_parts.append(types.Part(
+                function_response=types.FunctionResponse(id=call.id, name=call.name, response=result)
+            ))
 
         if submit is not None:
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -230,12 +268,12 @@ def analyze_market(question: str, client: Any = None) -> dict:
                 "game_intel.ai request model=%s tool_calls=%d latency_ms=%d input_tokens=%d output_tokens=%d",
                 model, len(tool_call_log), latency_ms, total_input_tokens, total_output_tokens,
             )
-            return _build_response(submit.input, real_comparables, real_breakdowns, real_saturation, tool_call_log)
+            return _build_response(dict(submit.args or {}), real_comparables, real_breakdowns, real_saturation, tool_call_log)
 
-        if not tool_results:
+        if not response_parts:
             # Model stopped without calling submit_analysis or any tool -- don't loop forever on nothing.
             break
-        messages.append({"role": "user", "content": tool_results})
+        contents.append({"role": "user", "parts": response_parts})
 
     return {"available": True, "error": "model did not reach a conclusion (no submit_analysis call)"}
 
@@ -284,8 +322,3 @@ def _build_response(
         "confidence": submission.get("confidence"),
         "tool_calls": tool_calls,
     }
-
-
-def _json(obj: Any) -> str:
-    import json
-    return json.dumps(obj, default=str)

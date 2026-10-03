@@ -1,52 +1,62 @@
-"""Eval harness for the AI market analyst (app/ai.py). Uses a scripted fake Anthropic client,
+"""Eval harness for the AI market analyst (app/ai.py). Uses a scripted fake Gemini client,
 so these run and pass with no API key -- they verify the tool-loop and grounding/integrity
-logic for real, not the live model's judgment (which needs ANTHROPIC_API_KEY and is not
+logic for real, not the live model's judgment (which needs GEMINI_API_KEY and is not
 exercised here)."""
-
-import os
 
 import pytest
 
 from app import ai, service
 
 
-class FakeBlock:
-    def __init__(self, type_, **kw):
-        self.type = type_
-        for k, v in kw.items():
-            setattr(self, k, v)
+class FakeFunctionCall:
+    def __init__(self, name, args, id_="t"):
+        self.name = name
+        self.args = args
+        self.id = id_
 
 
 class FakeUsage:
     def __init__(self, inp=10, out=10):
-        self.input_tokens = inp
-        self.output_tokens = out
+        self.prompt_token_count = inp
+        self.candidates_token_count = out
+
+
+class FakeContent:
+    """Placeholder for candidates[0].content -- the fake never inspects what gets pushed
+    back into `contents`, it just needs something present each turn, same as the real
+    (opaque-to-us) object Gemini returns."""
+
+
+class FakeCandidate:
+    def __init__(self):
+        self.content = FakeContent()
 
 
 class FakeResponse:
-    def __init__(self, content):
-        self.content = content
-        self.usage = FakeUsage()
+    def __init__(self, calls):
+        self.function_calls = calls
+        self.usage_metadata = FakeUsage()
+        self.candidates = [FakeCandidate()]
 
 
-class FakeMessages:
-    """Scripted turns: each item is the list of content blocks for that response."""
+class FakeModels:
+    """Scripted turns: each item is the list of FakeFunctionCalls for that response."""
 
     def __init__(self, turns):
         self._turns = iter(turns)
 
-    def create(self, **kwargs):
+    def generate_content(self, **kwargs):
         return FakeResponse(next(self._turns))
 
 
 def tool_use(name, input_, id_="t"):
-    return FakeBlock("tool_use", name=name, input=input_, id=id_)
+    return FakeFunctionCall(name, input_, id_)
 
 
 def test_no_api_key_degrades_gracefully(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     result = ai.analyze_market("why is this concept risky?")
-    assert result == {"available": False, "reason": "no ANTHROPIC_API_KEY configured"}
+    assert result == {"available": False, "reason": "no GEMINI_API_KEY configured"}
 
 
 def test_grounded_answer_matches_the_real_tool_output_exactly():
@@ -57,7 +67,7 @@ def test_grounded_answer_matches_the_real_tool_output_exactly():
     })
     real_saturation = service.market_saturation(a, "Shooter", "PS3")
 
-    client = FakeMessages([
+    client = FakeModels([
         [
             tool_use("find_comparables", {"platform": "PS3", "genre": "Shooter"}, "t1"),
             tool_use("get_market_saturation", {"genre": "Shooter", "platform": "PS3"}, "t2"),
@@ -89,7 +99,7 @@ def test_submission_cannot_override_comparables_with_an_invented_list():
     fake_comparable = {"title": "Totally Made Up Game", "platform": "PS3", "genre": "Shooter",
                         "year": 2099, "similarity": 999}
 
-    client = FakeMessages([
+    client = FakeModels([
         [tool_use("find_comparables", {"platform": "PS3", "genre": "Shooter"}, "t1")],
         [tool_use("submit_analysis", {
             "comparables": [fake_comparable],  # not a real schema field -- must be ignored
@@ -103,7 +113,7 @@ def test_submission_cannot_override_comparables_with_an_invented_list():
 
 
 def test_nonexistent_combo_is_reported_as_insufficient_evidence_not_invented():
-    client = FakeMessages([
+    client = FakeModels([
         [tool_use("find_comparables", {"platform": "Vectrex", "genre": "Interpretive Dance Sim"}, "t1")],
         [tool_use("submit_analysis", {
             "why_comparable": [], "whitespace_hypothesis": None, "whitespace_evidence": None,
@@ -119,7 +129,7 @@ def test_nonexistent_combo_is_reported_as_insufficient_evidence_not_invented():
 
 
 def test_whitespace_claim_without_cited_evidence_is_dropped_server_side():
-    client = FakeMessages([
+    client = FakeModels([
         [tool_use("get_market_saturation", {"genre": "Puzzle", "platform": "PS3"}, "t1")],
         [tool_use("submit_analysis", {
             "why_comparable": [], "whitespace_hypothesis": "This is a huge blue ocean opportunity",
@@ -134,7 +144,7 @@ def test_whitespace_claim_without_cited_evidence_is_dropped_server_side():
 
 
 def test_whitespace_claim_with_cited_evidence_is_kept():
-    client = FakeMessages([
+    client = FakeModels([
         [tool_use("get_market_saturation", {"genre": "Puzzle", "platform": "PS3"}, "t1")],
         [tool_use("submit_analysis", {
             "why_comparable": [], "whitespace_hypothesis": "Thin recent coverage may be an opening",
@@ -158,7 +168,7 @@ def test_system_prompt_tells_the_model_tool_results_are_data_not_instructions():
 
 
 def test_model_giving_up_without_submit_analysis_does_not_crash():
-    client = FakeMessages([[FakeBlock("text", text="I don't know.")]])
+    client = FakeModels([[]])
     result = ai.analyze_market("???", client=client)
     assert result["available"] is True
     assert "error" in result
