@@ -6,6 +6,9 @@ updates:
     ignore:
       # pydantic pins the exact pydantic-core it needs, so the two must move together: bump pydantic, not the core.
       - dependency-name: pydantic-core
+      # google-genai requires websockets<17; a websockets major can only move when google-genai allows it.
+      - dependency-name: websockets
+        update-types: [version-update:semver-major]
     cooldown:
       default-days: 3
     groups:
