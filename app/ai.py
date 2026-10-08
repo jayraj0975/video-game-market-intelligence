@@ -251,7 +251,9 @@ def analyze_market(question: str, client: Any = None) -> dict:
             try:
                 result = _dispatch_tool(a, call.name, call.args or {})
             except Exception as exc:  # noqa: BLE001 - surfaced to the model as a tool error, not a crash
-                result = {"error": str(exc)}
+                # The detail stays in the server log: the model's text can reach the API response.
+                log.warning("game_intel.ai tool %s failed", call.name, exc_info=True)
+                result = {"error": f"tool failed ({type(exc).__name__})"}
             if call.name == "find_comparables" and "comparables" in result:
                 real_comparables.extend(result["comparables"])
             if call.name == "explain_comparable" and result.get("found"):

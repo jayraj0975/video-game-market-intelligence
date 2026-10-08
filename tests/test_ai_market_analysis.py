@@ -172,3 +172,21 @@ def test_model_giving_up_without_submit_analysis_does_not_crash():
     result = ai.analyze_market("???", client=client)
     assert result["available"] is True
     assert "error" in result
+
+
+def test_a_failing_tool_does_not_send_its_exception_text_to_the_model(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("secret path /srv/app/model.joblib")
+
+    monkeypatch.setattr(ai, "_dispatch_tool", boom)
+    sent = []
+
+    class Recording(FakeModels):
+        def generate_content(self, **kwargs):
+            sent.append(repr(kwargs["contents"]))
+            return super().generate_content(**kwargs)
+
+    client = Recording([[tool_use("find_comparables", {"platform": "PS3", "genre": "Shooter"})], []])
+    result = ai.analyze_market("x", client=client)
+    assert "secret path" not in "".join(sent) + repr(result)
+    assert "RuntimeError" in "".join(sent)
