@@ -100,6 +100,13 @@ def predict(release: Release) -> dict:
     return service.predict(a, _validated([release]))[0] | {"base_rate": a.base_rate}
 
 
+@app.post("/api/sensitivity")
+def sensitivity(release: Release) -> dict:
+    """The same release re-scored with one thing changed at a time: platform, genre, rating, launch breadth."""
+    a = service.get_artifacts()
+    return service.sensitivity(a, _validated([release])[0])
+
+
 @app.post("/api/rank")
 def rank(slate: Slate) -> dict:
     a = service.get_artifacts()

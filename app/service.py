@@ -349,3 +349,46 @@ if __name__ == "__main__":
     save_artifacts(built)
     meta = write_meta(built)
     print(f"wrote {MODEL_PATH} and {META_PATH.name} (artifact sha256 {meta['artifact_sha256'][:16]}...)")
+
+
+SENSITIVITY_MIN_TITLES = 100  # past titles a genre or rating needs before it is offered as an alternative
+SENSITIVITY_MIN_ACTIVE = 30  # titles a platform needs in the three years up to the release
+
+
+def sensitivity(a: Artifacts, item: dict, top: int = 5) -> dict:
+    """What would change the call: the same release re-scored with one thing different at a time.
+
+    Platform (only those that existed by the release year), genre, rating and how many platforms it launches on.
+    Each answer is the model's estimate for a title that looks like this one with that change; it is an
+    association learned from past releases, not the effect of making the change.
+    """
+    base = predict(a, [item])[0]["probability"]
+    # Only alternatives with enough history to estimate anything: a rating seen on a handful of titles (AO, EC, K-A)
+    # gets a wild score from a few lucky releases. Platforms must be active around the release year (capped at the
+    # last year of data for releases planned after it).
+    counts: dict[str, dict] = {"platform": {}, "genre": {}, "rating": {}}
+    last = max(r["year"] for r in a.catalog)
+    window = range(min(item["year"], last) - 2, min(item["year"], last) + 1)
+    for r in a.catalog:
+        for dim in ("genre", "rating"):
+            counts[dim][r[dim]] = counts[dim].get(r[dim], 0) + 1
+        if r["year"] in window:
+            counts["platform"][r["platform"]] = counts["platform"].get(r["platform"], 0) + 1
+    enough = {"platform": SENSITIVITY_MIN_ACTIVE, "genre": SENSITIVITY_MIN_TITLES, "rating": SENSITIVITY_MIN_TITLES}
+    dims = {dim: [v for v in values if v == item[dim] or counts[dim].get(v, 0) >= enough[dim]]
+            for dim, values in (("platform", a.platforms), ("genre", a.genres), ("rating", a.ratings))}
+    # "Unrated" means the source had no rating (mostly older handheld and Japanese titles): a gap in the data, not
+    # a choice a studio can make.
+    dims["rating"] = [v for v in dims["rating"] if v != "Unrated" or v == item["rating"]]
+    dims["n_platforms"] = [1, 2, 3, 4]
+    out = {}
+    for dim, values in dims.items():
+        variants = [item | {dim: v} for v in values]
+        probs = [r["probability"] for r in predict(a, variants)]
+        rows = sorted(({"value": v, "probability": p, "ratio": p / base, "current": v == item.get(dim, 1 if dim == "n_platforms" else None)}
+                       for v, p in zip(values, probs)), key=lambda r: -r["probability"])
+        shown = rows[:top] + [r for r in rows[top:] if r["current"]]  # always show where the release is now
+        out[dim] = {"options": shown, "considered": len(rows)}
+    return {"base_probability": base, "dimensions": out,
+            "note": "Each figure re-scores this release with one thing changed. It shows how similar past releases did, "
+                    "not what the change would cause."}

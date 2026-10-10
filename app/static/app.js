@@ -43,7 +43,28 @@ function showResult(r) {
     ${r.history_note ? `<p class="caveat" role="note">${esc(r.history_note)}</p>` : ""}
     <p class="caveat">Physical retail sales only, and franchises are matched by the text before the colon in the title. A game already in the dataset counts itself in its own franchise history, so score new releases, not old ones. A single probability carries real uncertainty; the model is best at ordering titles against each other.</p>
     <h2 style="margin-top:18px">Similar past releases</h2>
-    <div id="comparables"><p class="muted">Loading&hellip;</p></div>`;
+    <div id="comparables"><p class="muted">Loading&hellip;</p></div>
+    <h2 style="margin-top:18px">What would change the call?</h2>
+    <div id="sensitivity"><p class="muted">Loading&hellip;</p></div>`;
+}
+
+const DIM_LABEL = { platform: "Platform", genre: "Genre", rating: "ESRB rating", n_platforms: "Platforms at launch" };
+
+function showSensitivity(s) {
+  const max = Math.max(...Object.values(s.dimensions).flatMap((d) => d.options.map((o) => o.probability)));
+  $("sensitivity").innerHTML = Object.entries(s.dimensions).map(([dim, d]) => `
+    <h3 class="sens-head">${DIM_LABEL[dim]} <span class="muted">(top ${Math.min(5, d.considered)} of ${d.considered})</span></h3>
+    <div class="bars sens">${d.options.map((o) => `<div class="bar${o.current ? " now" : ""}"><span>${esc(String(o.value))}${o.current ? " (now)" : ""}</span>` +
+      `<div class="track"><div class="fill" style="width:${(o.probability / max) * 100}%"></div></div>` +
+      `<span class="num">${pct(o.probability)}${o.current ? "" : ` <small>${o.ratio.toFixed(1)}&times;</small>`}</span></div>`).join("")}</div>`).join("") +
+    `<p class="caveat">${esc(s.note)} Only alternatives with enough past releases are shown.</p>`;
+}
+
+function loadExtras(form) {
+  api("/api/comparables", form).then((c) => showComparables(c.comparables))
+    .catch((err) => { $("comparables").innerHTML = `<p class="err">${esc(err.message)}</p>`; });
+  api("/api/sensitivity", form).then(showSensitivity)
+    .catch((err) => { $("sensitivity").innerHTML = `<p class="err">${esc(err.message)}</p>`; });
 }
 
 function showComparables(rows) {
@@ -72,6 +93,8 @@ function showConceptReport(r) {
     <p class="caveat">${esc(sat.note)}</p>`;
   showResult(r.prediction);
   showComparables(r.comparables);
+  api("/api/sensitivity", readForm()).then(showSensitivity)
+    .catch((err) => { $("sensitivity").innerHTML = `<p class="err">${esc(err.message)}</p>`; });
 }
 
 $("validate-concept").addEventListener("click", async () => {
@@ -85,8 +108,7 @@ $("form").addEventListener("submit", async (e) => {
   try {
     const form = readForm();
     showResult(await api("/api/predict", form));
-    api("/api/comparables", form).then((c) => showComparables(c.comparables))
-      .catch((err) => { $("comparables").innerHTML = `<p class="err">${esc(err.message)}</p>`; });
+    loadExtras(form);
   } catch (err) { $("err").textContent = err.message; }
 });
 
