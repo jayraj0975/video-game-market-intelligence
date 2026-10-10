@@ -112,3 +112,36 @@ def test_metrics_and_market_and_index():
     assert "script-src 'self';" in page.headers["content-security-policy"]
     assert page.headers["x-frame-options"] == "DENY"
     assert '<script src="/static/app.js">' in page.text and client.get("/static/app.js").status_code == 200
+
+
+def test_sensitivity_rescores_one_change_at_a_time():
+    release = {"title": "Kart Party", "platform": "Wii", "genre": "Racing", "rating": "E", "publisher": "Nintendo", "year": 2009,
+               "critic_score": 80, "critic_count": 40}
+    r = client.post("/api/sensitivity", json=release)
+    assert r.status_code == 200
+    s = r.json()
+    base = client.post("/api/predict", json=release).json()["probability"]
+    assert s["base_probability"] == pytest.approx(base)
+    assert set(s["dimensions"]) == {"platform", "genre", "rating", "n_platforms"}
+    for dim, d in s["dimensions"].items():
+        probs = [o["probability"] for o in d["options"] if not o["current"]]
+        assert probs == sorted(probs, reverse=True), dim  # best alternatives first
+        current = [o for o in d["options"] if o["current"]]
+        assert len(current) == 1 and current[0]["probability"] == pytest.approx(base), dim  # where it is now is always shown
+        assert all(o["ratio"] == pytest.approx(o["probability"] / base) for o in d["options"])
+    assert "not what the change would cause" in s["note"]
+
+
+def test_sensitivity_offers_only_alternatives_with_history():
+    s = client.post("/api/sensitivity", json={"title": "Space Raiders", "platform": "PS4", "genre": "Shooter", "rating": "M",
+                                              "publisher": "Ubisoft", "year": 2015}).json()["dimensions"]
+    ratings = {o["value"] for o in s["rating"]["options"]}
+    assert not ratings & {"AO", "EC", "K-A", "RP", "Unrated"}  # a handful of titles each, or no rating at all
+    platforms = {o["value"] for o in s["platform"]["options"]}
+    assert not platforms & {"PS", "N64", "GBA", "DC"}  # long gone by 2015
+    assert s["platform"]["considered"] < 15
+
+
+def test_sensitivity_rejects_bad_input():
+    assert client.post("/api/sensitivity", json={"title": "x", "platform": "Nope", "genre": "Racing", "rating": "E",
+                                                 "publisher": "", "year": 2009}).status_code == 422

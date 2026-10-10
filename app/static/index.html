@@ -22,10 +22,11 @@
   h1 { font-size: 26px; margin: 0 0 4px; }
   h2 { font-size: 17px; margin: 0 0 12px; }
   .sub { color: var(--muted); margin: 0 0 24px; }
-  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
-  @media (min-width: 860px) { .grid.two { grid-template-columns: 1.1fr 1fr; } }
+  .grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  .grid > * { min-width: 0; }  /* a long select option or table must not widen the page on a phone */
+  @media (min-width: 860px) { .grid.two { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
-  form { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  form { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   label.full { grid-column: 1 / -1; }
   input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
@@ -41,6 +42,7 @@
   .big { font-size: 44px; font-weight: 700; line-height: 1; }
   .muted { color: var(--muted); }
   .err { color: #c0392b; margin: 8px 0 0; min-height: 1.4em; }
+  #comparables, #slate, #metrics, #concept-report { overflow-x: auto; }  /* wide tables scroll inside their card */
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 500; font-size: 12px; }
@@ -50,6 +52,11 @@
   .bar > span:first-child { color: var(--muted); }
   .bar .track { background: var(--bar); border-radius: 4px; height: 12px; }
   .bar .fill { background: var(--accent); height: 100%; border-radius: 4px; }
+  .bar.now > span:first-child { color: var(--ink); font-weight: 600; }
+  .bar.now .fill { opacity: .55; }
+  .bar small { color: var(--muted); }
+  .sens-head { margin: 12px 0 6px; font-size: 14px; }
+  .bars.sens .bar { grid-template-columns: 96px 1fr 92px; }  /* room for "35.4% 1.8×" on one line */
   .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
   .tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .caveat { font-size: 13px; color: var(--muted); border-left: 3px solid var(--warn); padding-left: 10px; margin-top: 14px; }
