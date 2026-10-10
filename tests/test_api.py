@@ -106,4 +106,9 @@ def test_concept_validate_flags_no_precedent_honestly():
 def test_metrics_and_market_and_index():
     assert "models" in client.get("/api/metrics").json()
     assert client.get("/api/market").json()["hit_rate_by_score"]
-    assert client.get("/").status_code == 200
+    page = client.get("/")
+    assert page.status_code == 200
+    # Strict policy: the page's script is a file, not inline, and nothing loads from other sites.
+    assert "script-src 'self';" in page.headers["content-security-policy"]
+    assert page.headers["x-frame-options"] == "DENY"
+    assert '<script src="/static/app.js">' in page.text and client.get("/static/app.js").status_code == 200
